@@ -440,6 +440,41 @@ func (m *Model) SetArchived(show bool) {
 	m.rebuildRows()
 }
 
+// RevealSession puts the cursor on a session's row for a request from
+// outside the list: it unfolds the groups above the session, and drops a
+// status filter only when that filter hides the row. found is false when
+// the list still has no row for it.
+func (m *Model) RevealSession(id, group string) (decision Decision, found bool) {
+	previous, previousOK := m.Selected()
+	collapsedChanged := false
+	for ancestor := group; ancestor != ""; ancestor = ParentGroup(ancestor) {
+		if m.collapsed[ancestor] {
+			delete(m.collapsed, ancestor)
+			collapsedChanged = true
+		}
+	}
+	m.rebuildRows()
+	found = m.FocusSession(id)
+	if !found && m.filter != statusFilterAll {
+		m.filter = statusFilterAll
+		m.rebuildRows()
+		found = m.FocusSession(id)
+	}
+	current, currentOK := m.Selected()
+	decision = Decision{
+		Consumed:         true,
+		SelectionChanged: previousOK != currentOK || previous != current,
+		Selection:        current,
+	}
+	if decision.SelectionChanged {
+		decision.SelectionEffect = SelectionEffectPreview
+	}
+	if collapsedChanged {
+		decision.Mutations = []Mutation{m.saveFolds()}
+	}
+	return decision, found
+}
+
 func (m *Model) ForgetGroups(paths []string) Decision {
 	changed := false
 	for _, removed := range paths {

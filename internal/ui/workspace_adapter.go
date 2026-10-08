@@ -194,11 +194,17 @@ type refreshMsg struct {
 func (m *Model) StartPoller(ctx context.Context, send func(tea.Msg)) <-chan struct{} {
 	m.focus.runtime.Watch = newFocusWatch(m.services.tmux, send)
 	m.syncPollInput()
+	stopFocusEndpoint := sessioncmd.ListenFocus(m.services.tmux.FocusEndpoint(), func(delivery sessioncmd.FocusDelivery) {
+		send(focusRequestMsg{delivery})
+	})
 	results := m.poller.results(ctx)
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
 		defer m.focus.runtime.Watch.Close()
+		// Removing the socket with the poller tells a later caller no
+		// manager is running, rather than one that never acts.
+		defer stopFocusEndpoint()
 		for result := range results {
 			send(pollMessage(result))
 		}
@@ -374,14 +380,8 @@ func (m *Model) routeRefreshMsg(msg tea.Msg) (tea.Model, tea.Cmd, bool) {
 		m.settleInstall()
 		m.rebuildRows()
 		if msg.focusID != "" {
-			focused, ok := m.selected()
-			// Moving the cursor under a focused pane would leave the
-			// keyboard pinned to the session the user was in while the
-			// list claims another. The click steps back to the list, and
-			// only once its session turns out to have a row to land on.
-			if m.focusSession(msg.focusID) && m.focused() && (!ok || focused.ID != msg.focusID) {
-				focusExit = m.leaveFocus()
-			}
+			_, jump, _ := m.bringForward(msg.focusID, false)
+			focusExit = tea.Batch(focusExit, jump)
 		}
 		reviewStatuses := m.reviewStatusesCmd()
 		// A pass that ran with a stale selection (a session created this
