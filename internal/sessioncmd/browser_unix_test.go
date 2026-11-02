@@ -92,7 +92,7 @@ func TestCreateBrowserRefusesWhenNotInstalled(t *testing.T) {
 
 func TestCreateBrowserNestsNamesAndQuotesTheURL(t *testing.T) {
 	argsFile := filepath.Join(t.TempDir(), "args")
-	prependStub(t, "terminal-browser", "#!/bin/sh\nprintf '%s\\n' \"$@\" > "+tmux.ShellQuote(argsFile)+"\nexec sleep 600\n")
+	prependStub(t, "terminal-browser", "#!/bin/sh\n[ \"$1\" = --version ] && echo 'terminal-browser v0.15.3' && exit 0\nprintf '%s\\n' \"$@\" > "+tmux.ShellQuote(argsFile)+"\nexec sleep 600\n")
 	h := newBrowserHarness(t)
 	h.browsers.installed = termbrowser.Installed
 	if major, minor, err := h.driver.ServerVersion(); err != nil || !tmux.VersionAtLeast(major, minor, 3, 3) {

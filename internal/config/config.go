@@ -186,9 +186,10 @@ type Choice struct {
 // stays out of the CLI pickers, and the keys that write into an agent's
 // pane refuse it.
 type Tool struct {
-	Command       string `toml:"command"`
-	DefaultStatus string `toml:"default_status"`
-	InputPrefix   string `toml:"input_prefix"`
+	Command        string `toml:"command"`
+	MinimumVersion string `toml:"minimum_version"`
+	DefaultStatus  string `toml:"default_status"`
+	InputPrefix    string `toml:"input_prefix"`
 }
 
 // TerminalTool is the tool the terminal key opens.
@@ -200,7 +201,7 @@ const BrowserTool = "browser"
 // Launch is the definition the shared launch path starts the tool's pane
 // from: its command, with none of an agent's resume, fork or model lines.
 func (t Tool) Launch() CLI {
-	return CLI{Command: t.Command, DefaultStatus: t.DefaultStatus, InputPrefix: t.InputPrefix}
+	return CLI{Command: t.Command, MinimumVersion: t.MinimumVersion, DefaultStatus: t.DefaultStatus, InputPrefix: t.InputPrefix}
 }
 
 type Config struct {

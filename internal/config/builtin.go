@@ -626,5 +626,6 @@ input_prefix = "(?m)^\\s*(?:(?:\\S+\\s+){0,3}[❯>$#›»→%➜]|PS [^\\n>]*>)\
 # may follow.
 [tools.browser]
 command = "terminal-browser open --no-merge"
+minimum_version = "0.15.3"
 default_status = "idle"
 `

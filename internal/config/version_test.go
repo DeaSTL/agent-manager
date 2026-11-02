@@ -154,6 +154,7 @@ func TestVersionNumberReadsEachCLIBanner(t *testing.T) {
 		"grok 1.0.62 (1474f9cbdd91)":        "1.0.62",
 		"omp/18.8.8":                        "18.8.8",
 		"Muse Code 1.4.11 (1.4.11-R6667.1)": "1.4.11",
+		"terminal-browser v0.15.3":          "0.15.3",
 	} {
 		if got := versionNumber.FindString(banner); got != want {
 			t.Errorf("%q read as %q, want %q", banner, got, want)
@@ -171,8 +172,31 @@ func TestBuiltinMinimumVersionsParse(t *testing.T) {
 			t.Errorf("%s minimum_version %q is not a version", name, tool.MinimumVersion)
 		}
 	}
+	for name, tool := range cfg.Tools {
+		if tool.MinimumVersion != "" && !versionNumber.MatchString(tool.MinimumVersion) {
+			t.Errorf("%s minimum_version %q is not a version", name, tool.MinimumVersion)
+		}
+	}
 	if cfg.CLIs["pi"].MinimumVersion != "0.84.3" {
 		t.Fatalf("pi minimum_version = %q", cfg.CLIs["pi"].MinimumVersion)
+	}
+}
+
+func TestTheBrowserRefusesAnOlderTerminalBrowser(t *testing.T) {
+	fakeVersionCLI(t, "terminal-browser", "terminal-browser v0.14.0\n")
+	cfg, err := Default()
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, browser := cfg.Browser()
+
+	err = CheckVersion(browser.Launch())
+	var outdated OutdatedToolError
+	if !errors.As(err, &outdated) {
+		t.Fatalf("err = %v, want OutdatedToolError", err)
+	}
+	if outdated.Binary != "terminal-browser" || outdated.Installed != "0.14.0" || outdated.Minimum != browser.MinimumVersion {
+		t.Fatalf("outdated = %+v", outdated)
 	}
 }
 
