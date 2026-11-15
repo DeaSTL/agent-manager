@@ -426,10 +426,21 @@ func (w *Watcher) watch(ctx context.Context, id string, stop <-chan struct{}, in
 		}
 		return pane, true
 	}
+	lostClient := captureLoop(stop, input, control.Events(), control.Done(), capture)
+	w.clearIfCurrent(id, stop)
+	if lostClient {
+		lost := fmt.Errorf("preview client for %s exited", id)
+		if err := control.Err(); err != nil {
+			lost = fmt.Errorf("%w: %w", lost, err)
+		}
+		w.report(stop, lost)
+	}
+}
+
+func captureLoop(stop, input, events, done <-chan struct{}, capture func() (string, bool)) bool {
 	previous, ok := capture()
 	if !ok {
-		w.clearIfCurrent(id, stop)
-		return
+		return false
 	}
 	lastCapture := time.Now()
 	nextCapture := lastCapture.Add(captureGap)
@@ -439,16 +450,10 @@ func (w *Watcher) watch(ctx context.Context, id string, stop <-chan struct{}, in
 	for {
 		select {
 		case <-stop:
-			return
-		case <-control.Done():
-			w.clearIfCurrent(id, stop)
-			lost := fmt.Errorf("preview client for %s exited", id)
-			if err := control.Err(); err != nil {
-				lost = fmt.Errorf("%w: %w", lost, err)
-			}
-			w.report(stop, lost)
-			return
-		case <-control.Events():
+			return false
+		case <-done:
+			return true
+		case <-events:
 		case <-input:
 			inputUntil = time.Now().Add(frameBudget)
 			continue
@@ -462,7 +467,7 @@ func (w *Watcher) watch(ctx context.Context, id string, stop <-chan struct{}, in
 			timer.Reset(wait)
 			select {
 			case <-stop:
-				return
+				return false
 			case <-input:
 				inputUntil = time.Now().Add(frameBudget)
 				captureAt = lastCapture.Add(captureGap)
@@ -472,7 +477,7 @@ func (w *Watcher) watch(ctx context.Context, id string, stop <-chan struct{}, in
 		}
 		for {
 			select {
-			case <-control.Events():
+			case <-events:
 				continue
 			default:
 			}
@@ -480,8 +485,7 @@ func (w *Watcher) watch(ctx context.Context, id string, stop <-chan struct{}, in
 		}
 		pane, ok := capture()
 		if !ok {
-			w.clearIfCurrent(id, stop)
-			return
+			return false
 		}
 		// A write that leaves the text unchanged, like the cursor move some
 		// TUIs send ahead of an echo, must not hold back that echo.
