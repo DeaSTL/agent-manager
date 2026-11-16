@@ -62,11 +62,7 @@ func listHelpRows(list keybind.Table, arrowStep bool, glyphs Glyphs) [][2]string
 	h.action("archived view", keybind.Archived)
 	h.action("hide / show empty groups", keybind.EmptyGroups)
 	h.action("fold / unfold every group (active view)", keybind.FoldAll)
-	resize := "resize the split (←→ or hl, or drag; ↵ commits, esc cancels)"
-	if mode.Effective() == presentation.GlyphModeBasic {
-		resize = "resize split: left/right, h/l, drag; enter sets, esc cancels"
-	}
-	h.action(resize, keybind.Resize)
+	h.action(resizeHelp(mode), keybind.Resize)
 	h.action("settings (also in the root row menu)", keybind.Settings)
 	h.action("messages", keybind.Messages)
 	h.action("this key map", keybind.Help)
@@ -265,14 +261,28 @@ func sessionHelpRows(keys keybind.Table, arrowStep bool, mouseRows [][2]string, 
 	if label := keys.Binding(keybind.Editor).Label(); label != "" {
 		rows = append(rows, [2]string{label, "open its directory in an editor"})
 	}
+	if label := keys.Binding(keybind.Resize).Label(); label != "" {
+		// The section covers an attach too, where no resize binding is
+		// installed, so the row names the screen that keeps it.
+		rows = append(rows, [2]string{label, "focused: " + resizeHelp(mode)})
+	}
 	if label := keys.Binding(keybind.SavedPrompt).Label(); label != "" {
-		rows = append(rows, [2]string{label, "open saved prompts and paste the pick"})
+		rows = append(rows, [2]string{label, "focused: open saved prompts and paste the pick"})
 	}
 	if label := keys.Binding(keybind.TmuxPrefix).Label(); label != "" {
 		rows = append(rows, [2]string{label, "attached: tmux's prefix, in place of yours"})
 	}
 	rows = append(rows, [2]string{"pgup/pgdn", "focused: scroll the pane's history on its normal screen"})
 	return append(rows, mouseRows...)
+}
+
+// resizeHelp is the one wording the list's and a focused session's key map
+// share for the divider, so the two never drift apart.
+func resizeHelp(mode presentation.GlyphMode) string {
+	if mode.Effective() == presentation.GlyphModeBasic {
+		return "resize split: left/right, h/l, drag; enter sets, esc cancels"
+	}
+	return "resize the split (←→ or hl, drag; ↵ commits, esc cancels)"
 }
 
 func titledWith(name string, list keybind.Table, mode presentation.GlyphMode, actions ...string) string {
