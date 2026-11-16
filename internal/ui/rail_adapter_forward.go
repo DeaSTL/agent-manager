@@ -24,6 +24,19 @@ type pendingForward struct {
 	answer    chan<- error
 }
 
+// forwardKind is what bringing a session forward asks of the manager.
+type forwardKind int
+
+const (
+	// forwardSelect moves the cursor to the session on the list.
+	forwardSelect forwardKind = iota
+	// forwardOpen also opens it the way the enter key does.
+	forwardOpen
+	// forwardClick is a clicked notification. It moves the cursor like a
+	// select but leaves the user in the session when that is the one named.
+	forwardClick
+)
+
 // overlayLayers bounds the esc presses bringForward spends closing what
 // covers the list. Each press closes at most one layer; the bound is for a
 // layer whose esc does not close it, which would otherwise loop.
@@ -44,7 +57,11 @@ func (m *Model) routeForwardMsg(msg tea.Msg) (tea.Model, tea.Cmd, bool) {
 	if pending := m.focus.forward.sessionID; pending != "" {
 		m.answerForward(pending, fmt.Errorf("session %s was selected but not opened: another request to bring a session forward took its place", pending))
 	}
-	opening, jump, err := m.bringForward(request.Request.ID, request.Request.Enter)
+	kind := forwardSelect
+	if request.Request.Enter {
+		kind = forwardOpen
+	}
+	opening, jump, err := m.bringForward(request.Request.ID, kind)
 	if opening {
 		m.focus.forward = pendingForward{sessionID: request.Request.ID, answer: request.Answer}
 	} else {
@@ -67,13 +84,13 @@ func (m *Model) routeForwardMsg(msg tea.Msg) (tea.Model, tea.Cmd, bool) {
 // input stays open with the cursor moved under it, and the session is not
 // opened over it. opening reports an open handed to the effect lane, whose
 // completion answers the request; otherwise err is the answer.
-func (m *Model) bringForward(id string, enter bool) (opening bool, cmd tea.Cmd, err error) {
+func (m *Model) bringForward(id string, kind forwardKind) (opening bool, cmd tea.Cmd, err error) {
 	sess, ok := m.sessionByID(id)
 	if !ok || (sess.Archived && !m.rail.ShowArchived()) {
 		return false, nil, fmt.Errorf("session %s has no row in Agent Manager's list yet", id)
 	}
 	cmds := m.closeInputFreeLayers()
-	if focused, ok := m.selected(); m.focused() && (!enter || !ok || focused.ID != sess.ID) {
+	if focused, ok := m.selected(); m.focused() && (kind == forwardSelect || !ok || focused.ID != sess.ID) {
 		if top, _ := m.top(); !isFocusSurface(top) {
 			return false, tea.Batch(cmds...), fmt.Errorf("a dialog is open over the session Agent Manager is in, and it is left as it is; close it to move to session %s", sess.ID)
 		}
@@ -88,10 +105,13 @@ func (m *Model) bringForward(id string, enter bool) (opening bool, cmd tea.Cmd, 
 	}
 	decision, found := m.rail.RevealSession(sess.ID, sess.Group)
 	m.queueRail(decision.Mutations, 0, false)
+	if decision.Refresh {
+		m.requestRefresh()
+	}
 	if !found {
 		return false, tea.Batch(cmds...), fmt.Errorf("session %s has no row in Agent Manager's list", sess.ID)
 	}
-	if !enter {
+	if kind != forwardOpen {
 		return false, tea.Batch(cmds...), nil
 	}
 	if !m.listUncovered() {

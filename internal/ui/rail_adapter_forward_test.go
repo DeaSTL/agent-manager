@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -200,5 +201,82 @@ func TestExpiredFocusRequestIsDropped(t *testing.T) {
 	}
 	if len(answer) != 0 {
 		t.Fatal("an expired request was answered a second time")
+	}
+}
+
+// clickNotification delivers a clicked notification the way the poller
+// does, on the next listing.
+func (m *Model) clickNotification(t *testing.T, id string) {
+	t.Helper()
+	updated, cmd := m.Update(refreshMsg{
+		sessions: slices.Clone(m.workspace.sessions),
+		listedAt: time.Now(),
+		focusID:  id,
+	})
+	*m = *updated.(*Model)
+	if cmd != nil {
+		m.applyCmd(t, cmd)
+	}
+}
+
+// A click on the session the user is already in leaves them in it, as it
+// did before requests from other shells shared this path. A click on
+// another session steps back to the list with that row unfolded.
+func TestNotificationClickStaysInTheSessionItNames(t *testing.T) {
+	t.Parallel()
+	m, deep := focusRequestModel(t)
+	if err := m.serveFocusRequest(t, deep.ID, true); err != nil {
+		t.Fatalf("setup: focus answered %v", err)
+	}
+	m.clickNotification(t, deep.ID)
+	if !m.focused() {
+		t.Fatalf("screen = %v after a click on the focused session, want focus kept", m.screenID())
+	}
+	m.rail.SetCollapsed("backend", true)
+	var top store.Session
+	for _, sess := range m.workspace.sessions {
+		if sess.Name == "top" {
+			top = sess
+		}
+	}
+	m.clickNotification(t, top.ID)
+	if !m.onList() {
+		t.Fatalf("screen = %v after a click on another session, want the list", m.screenID())
+	}
+	if sess, ok := m.selected(); !ok || sess.ID != top.ID {
+		t.Fatalf("cursor is on %+v, want top", sess)
+	}
+}
+
+// A click while the New Session form is open moves the cursor under the
+// form and keeps what was typed into it.
+func TestNotificationClickKeepsTheNewSessionForm(t *testing.T) {
+	t.Parallel()
+	m, deep := focusRequestModel(t)
+	m.openForm()
+	m.form().SetName("half typed")
+	m.clickNotification(t, deep.ID)
+	if m.form() == nil || m.form().Name() != "half typed" {
+		t.Fatalf("screen = %v; want the form kept with its text", m.screenID())
+	}
+	if sess, ok := m.selected(); !ok || sess.ID != deep.ID {
+		t.Fatalf("cursor is on %+v, want deep under the form", sess)
+	}
+}
+
+// The archive view lists only archived sessions, so a request for a live
+// one switches back to the live list.
+func TestFocusRequestLeavesTheArchiveView(t *testing.T) {
+	t.Parallel()
+	m, deep := focusRequestModel(t)
+	m.rail.SetArchived(true)
+	if err := m.serveFocusRequest(t, deep.ID, false); err != nil {
+		t.Fatalf("select answered %v", err)
+	}
+	if m.rail.ShowArchived() {
+		t.Fatal("the archive view is still on")
+	}
+	if sess, ok := m.selected(); !ok || sess.ID != deep.ID {
+		t.Fatalf("cursor is on %+v, want deep", sess)
 	}
 }

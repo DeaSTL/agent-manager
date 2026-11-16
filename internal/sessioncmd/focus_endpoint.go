@@ -3,8 +3,12 @@ package sessioncmd
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net"
 	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -17,21 +21,34 @@ type FocusDelivery struct {
 	Expires time.Time
 }
 
-// ListenFocus serves focus requests on path until the returned stop runs.
-// Each connection carries one request and gets the outcome back on itself,
-// so no request can be mistaken for another. A manager already answering on
-// path keeps it; a socket left by one that exited is replaced.
-func ListenFocus(path string, deliver func(FocusDelivery)) (stop func()) {
-	if conn, err := net.Dial("unix", path); err == nil {
-		conn.Close()
-		return func() {}
+// staleEndpointAge spares a socket another manager may have bound but not
+// yet started listening on.
+const staleEndpointAge = time.Minute
+
+// ListenFocus serves focus requests until the returned stop runs, on an
+// endpoint of this process's own beside base, so every manager on one
+// server stays reachable and a caller can tell when several are. Each
+// connection carries one request and gets the outcome back on itself, so
+// no request can be mistaken for another.
+func ListenFocus(base string, deliver func(FocusDelivery)) (stop func(), err error) {
+	return listenFocusAs(base, os.Getpid(), deliver)
+}
+
+func listenFocusAs(base string, pid int, deliver func(FocusDelivery)) (stop func(), err error) {
+	sweepStaleFocusEndpoints(base)
+	path := base + "." + strconv.Itoa(pid)
+	// tmux makes this directory with these permissions when its server
+	// starts, which may come after the manager does.
+	if err := os.MkdirAll(filepath.Dir(base), 0o700); err != nil {
+		return nil, err
 	}
+	// A process that held this id before and crashed left its socket here.
 	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return func() {}
+		return nil, err
 	}
 	listener, err := net.Listen("unix", path)
 	if err != nil {
-		return func() {}
+		return nil, err
 	}
 	go func() {
 		for {
@@ -43,7 +60,80 @@ func ListenFocus(path string, deliver func(FocusDelivery)) (stop func()) {
 		}
 	}()
 	// Closing a listener Go created also unlinks its socket.
-	return func() { listener.Close() }
+	return func() { listener.Close() }, nil
+}
+
+// focusEndpoints lists the sockets managers created beside base, live or
+// left behind by one that crashed.
+func focusEndpoints(base string) ([]string, error) {
+	dir, prefix := filepath.Dir(base), filepath.Base(base)+"."
+	entries, err := os.ReadDir(dir)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var paths []string
+	for _, entry := range entries {
+		pid, ok := strings.CutPrefix(entry.Name(), prefix)
+		if !ok {
+			continue
+		}
+		if _, err := strconv.Atoi(pid); err != nil {
+			continue
+		}
+		paths = append(paths, filepath.Join(dir, entry.Name()))
+	}
+	return paths, nil
+}
+
+func sweepStaleFocusEndpoints(base string) {
+	paths, err := focusEndpoints(base)
+	if err != nil {
+		return
+	}
+	for _, path := range paths {
+		info, err := os.Stat(path)
+		if err != nil || time.Since(info.ModTime()) < staleEndpointAge {
+			continue
+		}
+		if conn, err := net.Dial("unix", path); err == nil {
+			conn.Close()
+			continue
+		}
+		os.Remove(path)
+	}
+}
+
+// dialManager connects to the one manager answering beside base. A socket
+// that refuses the connection belongs to a manager that exited. Several
+// live ones leave no way to tell which window the caller is looking at.
+func dialManager(base string) (net.Conn, error) {
+	paths, err := focusEndpoints(base)
+	if err != nil {
+		return nil, err
+	}
+	var live []net.Conn
+	var pids []string
+	for _, path := range paths {
+		conn, err := net.DialTimeout("unix", path, time.Second)
+		if err != nil {
+			continue
+		}
+		live = append(live, conn)
+		pids = append(pids, strings.TrimPrefix(filepath.Base(path), filepath.Base(base)+"."))
+	}
+	switch len(live) {
+	case 0:
+		return nil, errNoManager
+	case 1:
+		return live[0], nil
+	}
+	for _, conn := range live {
+		conn.Close()
+	}
+	return nil, fmt.Errorf("%d Agent Manager windows are running on this tmux server (processes %s), so it cannot tell which one to use (quit all but one)", len(live), strings.Join(pids, ", "))
 }
 
 func answerFocus(conn net.Conn, deliver func(FocusDelivery)) {

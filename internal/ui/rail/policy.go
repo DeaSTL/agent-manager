@@ -442,8 +442,8 @@ func (m *Model) SetArchived(show bool) {
 
 // RevealSession puts the cursor on a session's row for a request from
 // outside the list: it unfolds the groups above the session, and drops a
-// status filter only when that filter hides the row. found is false when
-// the list still has no row for it.
+// status filter or the archive view only when it hides the row. found is
+// false when the list still has no row for it.
 func (m *Model) RevealSession(id, group string) (decision Decision, found bool) {
 	previous, previousOK := m.Selected()
 	collapsedChanged := false
@@ -460,11 +460,18 @@ func (m *Model) RevealSession(id, group string) (decision Decision, found bool) 
 		m.rebuildRows()
 		found = m.FocusSession(id)
 	}
+	refresh := false
+	if !found && m.showArchived {
+		m.SetArchived(false)
+		refresh = true
+		found = m.FocusSession(id)
+	}
 	current, currentOK := m.Selected()
 	decision = Decision{
 		Consumed:         true,
 		SelectionChanged: previousOK != currentOK || previous != current,
 		Selection:        current,
+		Refresh:          refresh,
 	}
 	if decision.SelectionChanged {
 		decision.SelectionEffect = SelectionEffectPreview

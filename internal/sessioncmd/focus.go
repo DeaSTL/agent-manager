@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net"
 	"strings"
 	"time"
 )
@@ -26,7 +25,7 @@ type FocusAnswer struct {
 // told it timed out never sees the list move later.
 const FocusAnswerWait = 5 * time.Second
 
-var errNoManager = errors.New("no Agent Manager is running to bring the session forward")
+var errNoManager = errors.New("no Agent Manager window is running to bring the session forward")
 
 // Focus brings a session forward in the running manager: the groups above
 // it unfold and the cursor lands on its row, and with enter the session
@@ -52,11 +51,9 @@ func (s *Sessions) Focus(targetID string, enter bool) (Session, error) {
 	if target.Archived {
 		return Session{}, fmt.Errorf("session %s is archived, so the list has no row for it; restore it with %s first", id, runtime.words.Restore)
 	}
-	// Nothing listening, or a socket a manager left behind when it exited,
-	// both mean no manager is there to answer.
-	conn, err := net.Dial("unix", runtime.driver.FocusEndpoint())
+	conn, err := dialManager(runtime.driver.FocusEndpoint())
 	if err != nil {
-		return Session{}, errNoManager
+		return Session{}, err
 	}
 	defer conn.Close()
 	if err := conn.SetDeadline(time.Now().Add(FocusAnswerWait + time.Second)); err != nil {

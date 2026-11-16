@@ -11,7 +11,7 @@ import (
 // with reply, hands over the request it read, and then stops listening.
 func fakeFocusManager(t *testing.T, h *sessionHarness, reply FocusAnswer) <-chan FocusRequest {
 	t.Helper()
-	listener, err := net.Listen("unix", h.driver.FocusEndpoint())
+	listener, err := net.Listen("unix", h.driver.FocusEndpoint()+".4242")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -42,7 +42,7 @@ func TestFocusRefusesWhatTheManagerCannotShow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	if _, err := h.sessions.Focus(worker.ID, true); err == nil || !strings.Contains(err.Error(), "no Agent Manager is running") {
+	if _, err := h.sessions.Focus(worker.ID, true); err == nil || !strings.Contains(err.Error(), "no Agent Manager window is running") {
 		t.Fatalf("Focus with no manager = %v", err)
 	}
 	if _, err := h.sessions.Focus("feedface", true); err == nil || !strings.Contains(err.Error(), "does not exist") {

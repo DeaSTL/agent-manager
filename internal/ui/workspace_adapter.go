@@ -3,6 +3,7 @@ package ui
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -194,9 +195,14 @@ type refreshMsg struct {
 func (m *Model) StartPoller(ctx context.Context, send func(tea.Msg)) <-chan struct{} {
 	m.focus.runtime.Watch = newFocusWatch(m.services.tmux, send)
 	m.syncPollInput()
-	stopFocusEndpoint := sessioncmd.ListenFocus(m.services.tmux.FocusEndpoint(), func(delivery sessioncmd.FocusDelivery) {
+	stopFocusEndpoint, err := sessioncmd.ListenFocus(m.services.tmux.FocusEndpoint(), func(delivery sessioncmd.FocusDelivery) {
 		send(focusRequestMsg{delivery})
 	})
+	if err != nil {
+		stopFocusEndpoint = func() {}
+		// send blocks until the program runs, which starts after this returns.
+		go send(errMsg{fmt.Errorf("focus and select from other shells will not reach this window: %w", err)})
+	}
 	results := m.poller.results(ctx)
 	done := make(chan struct{})
 	go func() {
@@ -380,7 +386,7 @@ func (m *Model) routeRefreshMsg(msg tea.Msg) (tea.Model, tea.Cmd, bool) {
 		m.settleInstall()
 		m.rebuildRows()
 		if msg.focusID != "" {
-			_, jump, _ := m.bringForward(msg.focusID, false)
+			_, jump, _ := m.bringForward(msg.focusID, forwardClick)
 			focusExit = tea.Batch(focusExit, jump)
 		}
 		reviewStatuses := m.reviewStatusesCmd()
