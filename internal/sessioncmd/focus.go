@@ -64,7 +64,7 @@ func (s *Sessions) Focus(targetID string, enter bool) (Session, error) {
 	}
 	var answer FocusAnswer
 	if err := json.NewDecoder(conn).Decode(&answer); err != nil {
-		return Session{}, fmt.Errorf("Agent Manager did not answer: %w", err)
+		return Session{}, fmt.Errorf("no answer from Agent Manager: %w", err)
 	}
 	if answer.Error != "" {
 		return Session{}, errors.New(answer.Error)

@@ -51,7 +51,7 @@ func (m *Model) routeForwardMsg(msg tea.Msg) (tea.Model, tea.Cmd, bool) {
 		return routed(m, nil)
 	}
 	if m.effects.Quitting {
-		request.Answer <- errors.New("Agent Manager is quitting")
+		request.Answer <- errors.New("the manager is quitting")
 		return routed(m, nil)
 	}
 	if pending := m.focus.forward.sessionID; pending != "" {
