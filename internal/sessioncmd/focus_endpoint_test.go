@@ -35,7 +35,7 @@ func listenFocusForTest(t *testing.T, base string, pid int) <-chan FocusDelivery
 
 // staleFocusSocket leaves a socket file nobody listens on, the way a
 // manager that crashed does.
-func staleFocusSocket(t *testing.T, path string, age time.Duration) {
+func staleFocusSocket(t *testing.T, path string) {
 	t.Helper()
 	listener, err := net.Listen("unix", path)
 	if err != nil {
@@ -43,10 +43,6 @@ func staleFocusSocket(t *testing.T, path string, age time.Duration) {
 	}
 	listener.(*net.UnixListener).SetUnlinkOnClose(false)
 	listener.Close()
-	then := time.Now().Add(-age)
-	if err := os.Chtimes(path, then, then); err != nil {
-		t.Fatal(err)
-	}
 }
 
 func askFocus(t *testing.T, base string, request FocusRequest) <-chan FocusAnswer {
@@ -102,7 +98,7 @@ func TestDialManagerReachesTheLiveManagerPastStaleSockets(t *testing.T) {
 	if _, err := dialManager(base); !errors.Is(err, errNoManager) {
 		t.Fatalf("dial with nothing there = %v, want no manager", err)
 	}
-	staleFocusSocket(t, base+".7", 0)
+	staleFocusSocket(t, base+".7")
 	if err := os.WriteFile(base+".x", nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -129,16 +125,22 @@ func TestDialManagerRefusesWhenSeveralManagersAnswer(t *testing.T) {
 }
 
 // A manager starting up clears sockets crashed managers left long ago, and
-// spares a fresh one another manager may be about to listen on.
-func TestListenFocusSweepsOnlyOldStaleSockets(t *testing.T) {
+// spares a fresh one another manager may be about to listen on. Windows
+// cannot set times on a socket, so the sweep is run as if later.
+func TestSweepRemovesOnlyOldStaleSockets(t *testing.T) {
 	base := focusSocketBase(t)
-	staleFocusSocket(t, base+".11", time.Hour)
-	staleFocusSocket(t, base+".12", 0)
-	listenFocusForTest(t, base, 400)
-	if _, err := os.Stat(base + ".11"); !errors.Is(err, os.ErrNotExist) {
+	staleFocusSocket(t, base+".11")
+	live := listenFocusForTest(t, base, 400)
+	sweepStaleFocusEndpoints(base, time.Now())
+	if _, err := os.Lstat(base + ".11"); err != nil {
+		t.Fatalf("fresh socket was swept: %v", err)
+	}
+	sweepStaleFocusEndpoints(base, time.Now().Add(time.Hour))
+	if _, err := os.Lstat(base + ".11"); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("old stale socket still there: %v", err)
 	}
-	if _, err := os.Stat(base + ".12"); err != nil {
-		t.Fatalf("fresh socket was swept: %v", err)
+	askFocus(t, base, FocusRequest{ID: "a"})
+	if delivery := <-live; delivery.Request.ID != "a" {
+		t.Fatalf("the sweep cut off the live manager: request %+v", delivery.Request)
 	}
 }

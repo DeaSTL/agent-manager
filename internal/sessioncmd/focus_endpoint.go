@@ -35,7 +35,7 @@ func ListenFocus(base string, deliver func(FocusDelivery)) (stop func(), err err
 }
 
 func listenFocusAs(base string, pid int, deliver func(FocusDelivery)) (stop func(), err error) {
-	sweepStaleFocusEndpoints(base)
+	sweepStaleFocusEndpoints(base, time.Now())
 	path := base + "." + strconv.Itoa(pid)
 	// tmux makes this directory with these permissions when its server
 	// starts, which may come after the manager does.
@@ -88,14 +88,14 @@ func focusEndpoints(base string) ([]string, error) {
 	return paths, nil
 }
 
-func sweepStaleFocusEndpoints(base string) {
+func sweepStaleFocusEndpoints(base string, now time.Time) {
 	paths, err := focusEndpoints(base)
 	if err != nil {
 		return
 	}
 	for _, path := range paths {
-		info, err := os.Stat(path)
-		if err != nil || time.Since(info.ModTime()) < staleEndpointAge {
+		info, err := os.Lstat(path)
+		if err != nil || now.Sub(info.ModTime()) < staleEndpointAge {
 			continue
 		}
 		if conn, err := net.Dial("unix", path); err == nil {
