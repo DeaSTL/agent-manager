@@ -138,7 +138,7 @@ func dialManager(base string) (net.Conn, error) {
 
 func answerFocus(conn net.Conn, deliver func(FocusDelivery)) {
 	defer conn.Close()
-	expires := time.Now().Add(FocusAnswerWait)
+	expires := time.Now().Add(focusAnswerWait)
 	if err := conn.SetDeadline(expires.Add(time.Second)); err != nil {
 		return
 	}
@@ -150,7 +150,7 @@ func answerFocus(conn net.Conn, deliver func(FocusDelivery)) {
 	// The program stops taking messages while it is suspended in a full
 	// screen attach, so the hand-over must not hold up the reply.
 	go deliver(FocusDelivery{Request: request, Answer: answer, Expires: expires})
-	var reply FocusAnswer
+	var reply focusAnswer
 	select {
 	case err := <-answer:
 		if err != nil {

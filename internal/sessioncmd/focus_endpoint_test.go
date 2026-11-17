@@ -45,11 +45,11 @@ func staleFocusSocket(t *testing.T, path string) {
 	listener.Close()
 }
 
-func askFocus(t *testing.T, base string, request FocusRequest) <-chan FocusAnswer {
+func askFocus(t *testing.T, base string, request FocusRequest) <-chan focusAnswer {
 	t.Helper()
-	answers := make(chan FocusAnswer, 1)
+	answers := make(chan focusAnswer, 1)
 	go func() {
-		var answer FocusAnswer
+		var answer focusAnswer
 		conn, err := dialManager(base)
 		if err != nil {
 			answer.Error = "dial: " + err.Error()

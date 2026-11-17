@@ -10,20 +10,20 @@ import (
 )
 
 // FocusRequest is what the focus endpoint reads from a connection, and
-// FocusAnswer what it writes back on the same one once the manager acted.
+// focusAnswer what it writes back on the same one once the manager acted.
 type FocusRequest struct {
 	ID    string `json:"id"`
 	Enter bool   `json:"enter"`
 }
 
-type FocusAnswer struct {
+type focusAnswer struct {
 	Error string `json:"error,omitempty"`
 }
 
-// FocusAnswerWait bounds how long the manager has to act on a request. The
+// focusAnswerWait bounds how long the manager has to act on a request. The
 // endpoint drops a request it could not hand over in that time, so a caller
 // told it timed out never sees the list move later.
-const FocusAnswerWait = 5 * time.Second
+const focusAnswerWait = 5 * time.Second
 
 var errNoManager = errors.New("no Agent Manager window is running to bring the session forward")
 
@@ -56,13 +56,13 @@ func (s *Sessions) Focus(targetID string, enter bool) (Session, error) {
 		return Session{}, err
 	}
 	defer conn.Close()
-	if err := conn.SetDeadline(time.Now().Add(FocusAnswerWait + time.Second)); err != nil {
+	if err := conn.SetDeadline(time.Now().Add(focusAnswerWait + time.Second)); err != nil {
 		return Session{}, err
 	}
 	if err := json.NewEncoder(conn).Encode(FocusRequest{ID: target.ID, Enter: enter}); err != nil {
 		return Session{}, fmt.Errorf("send the request to Agent Manager: %w", err)
 	}
-	var answer FocusAnswer
+	var answer focusAnswer
 	if err := json.NewDecoder(conn).Decode(&answer); err != nil {
 		return Session{}, fmt.Errorf("no answer from Agent Manager: %w", err)
 	}

@@ -9,7 +9,7 @@ import (
 
 // fakeFocusManager answers one request on the harness server's endpoint
 // with reply, hands over the request it read, and then stops listening.
-func fakeFocusManager(t *testing.T, h *sessionHarness, reply FocusAnswer) <-chan FocusRequest {
+func fakeFocusManager(t *testing.T, h *sessionHarness, reply focusAnswer) <-chan FocusRequest {
 	t.Helper()
 	listener, err := net.Listen("unix", h.driver.FocusEndpoint()+".4242")
 	if err != nil {
@@ -65,7 +65,7 @@ func TestFocusReportsWhatTheManagerAnswered(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	requests := fakeFocusManager(t, h, FocusAnswer{})
+	requests := fakeFocusManager(t, h, focusAnswer{})
 	focused, err := h.sessions.Focus(worker.ID, true)
 	if err != nil || focused.ID != worker.ID {
 		t.Fatalf("Focus = %+v, %v; want the worker", focused, err)
@@ -77,7 +77,7 @@ func TestFocusReportsWhatTheManagerAnswered(t *testing.T) {
 	}
 
 	refusal := "session " + worker.ID + " is selected under a dialog"
-	fakeFocusManager(t, h, FocusAnswer{Error: refusal})
+	fakeFocusManager(t, h, focusAnswer{Error: refusal})
 	if _, err := h.sessions.Focus(worker.ID, true); err == nil || err.Error() != refusal {
 		t.Fatalf("Focus under a refusal = %v, want %q", err, refusal)
 	}
