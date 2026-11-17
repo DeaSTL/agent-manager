@@ -10,6 +10,7 @@ import (
 	uigeometry "github.com/YoanWai/agent-manager/internal/ui/geometry"
 	uihelp "github.com/YoanWai/agent-manager/internal/ui/help"
 	uinotices "github.com/YoanWai/agent-manager/internal/ui/notices"
+	uistatusbar "github.com/YoanWai/agent-manager/internal/ui/statusbar"
 	uisurface "github.com/YoanWai/agent-manager/internal/ui/surface"
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -54,26 +55,22 @@ func (m *Model) routeForwardMsg(msg tea.Msg) (tea.Model, tea.Cmd, bool) {
 		request.Answer <- errors.New("the manager is quitting")
 		return routed(m, nil)
 	}
-	if pending := m.focus.forward.sessionID; pending != "" {
-		m.answerForward(pending, fmt.Errorf("session %s was selected but not opened: another request to bring a session forward took its place", pending))
+	if pending := m.focus.forward; pending.answer != nil {
+		pending.answer <- fmt.Errorf("session %s was selected but not opened: another request to bring a session forward took its place", pending.sessionID)
+		m.focus.forward = pendingForward{}
 	}
 	kind := forwardSelect
 	if request.Request.Enter {
 		kind = forwardOpen
 	}
-	opening, jump, err := m.bringForward(request.Request.ID, kind)
+	opening, cmd, err := m.bringForward(request.Request.ID, kind)
 	if opening {
 		m.focus.forward = pendingForward{sessionID: request.Request.ID, answer: request.Answer}
 	} else {
 		request.Answer <- err
 	}
-	cmds := []tea.Cmd{jump}
-	if sess, ok := m.selected(); ok && sess.ID != m.workspace.procFor {
-		m.syncPollInput()
-		gen := m.focus.pane.MovePreview()
-		cmds = append(cmds, m.previewCmd(sess, gen), m.diffRefreshCmd())
-	}
-	return routed(m, tea.Batch(cmds...))
+	m.syncPollInput()
+	return routed(m, cmd)
 }
 
 // bringForward serves a request from another process: it unfolds the
@@ -104,10 +101,8 @@ func (m *Model) bringForward(id string, kind forwardKind) (opening bool, cmd tea
 		return false, tea.Batch(cmds...), nil
 	}
 	decision, found := m.rail.RevealSession(sess.ID, sess.Group)
-	m.queueRail(decision.Mutations, 0, false)
-	if decision.Refresh {
-		m.requestRefresh()
-	}
+	_, reveal := m.applyRailDecision(decision)
+	cmds = append(cmds, reveal)
 	if !found {
 		return false, tea.Batch(cmds...), fmt.Errorf("session %s has no row in Agent Manager's list", sess.ID)
 	}
@@ -161,25 +156,21 @@ func isFocusSurface(s uisurface.Surface) bool {
 }
 
 // answerForward settles the pending request for a session once its open
-// landed or failed.
-func (m *Model) answerForward(sessionID string, err error) {
+// ran. A failure the open put on the status bar after before is the reason
+// the caller hears.
+func (m *Model) answerForward(sessionID string, opened bool, before errBar) {
 	pending := m.focus.forward
 	if pending.answer == nil || pending.sessionID != sessionID {
 		return
 	}
 	m.focus.forward = pendingForward{}
-	pending.answer <- err
-}
-
-// forwardOutcome is what a pending request for a session hears once its
-// open ran: nothing when it opened, else the reason the status bar holds.
-func (m *Model) forwardOutcome(sessionID string, opened bool) error {
 	if opened {
-		return nil
+		pending.answer <- nil
+		return
 	}
-	reason := m.errBar.text
-	if reason == "" {
-		reason = "Agent Manager moved on before it opened"
+	reason := "Agent Manager moved on before it opened"
+	if m.errBar != before && m.errBar.kind() == uistatusbar.Failure {
+		reason = m.errBar.text
 	}
-	return fmt.Errorf("session %s was selected but not opened: %s", sessionID, reason)
+	pending.answer <- fmt.Errorf("session %s was selected but not opened: %s", sessionID, reason)
 }

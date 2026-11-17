@@ -386,7 +386,10 @@ func (m *Model) routeRefreshMsg(msg tea.Msg) (tea.Model, tea.Cmd, bool) {
 		m.settleInstall()
 		m.rebuildRows()
 		if msg.focusID != "" {
-			_, jump, _ := m.bringForward(msg.focusID, forwardClick)
+			_, jump, err := m.bringForward(msg.focusID, forwardClick)
+			if err != nil {
+				m.reportErr(err.Error())
+			}
 			focusExit = tea.Batch(focusExit, jump)
 		}
 		reviewStatuses := m.reviewStatusesCmd()

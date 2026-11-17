@@ -446,40 +446,45 @@ func (m *Model) SetArchived(show bool) {
 // false when the list still has no row for it.
 func (m *Model) RevealSession(id, group string) (decision Decision, found bool) {
 	previous, previousOK := m.Selected()
-	collapsedChanged := false
-	for ancestor := group; ancestor != ""; ancestor = ParentGroup(ancestor) {
-		if m.collapsed[ancestor] {
-			delete(m.collapsed, ancestor)
-			collapsedChanged = true
-		}
-	}
+	unfolded := m.unfoldAncestors(group)
 	m.rebuildRows()
 	found = m.FocusSession(id)
+	narrowingDropped := false
 	if !found && m.filter != statusFilterAll {
-		m.filter = statusFilterAll
-		m.rebuildRows()
+		m.ClearStatusFilter()
+		narrowingDropped = true
 		found = m.FocusSession(id)
 	}
-	refresh := false
 	if !found && m.showArchived {
 		m.SetArchived(false)
-		refresh = true
+		decision.Refresh = true
+		narrowingDropped = true
 		found = m.FocusSession(id)
 	}
 	current, currentOK := m.Selected()
-	decision = Decision{
-		Consumed:         true,
-		SelectionChanged: previousOK != currentOK || previous != current,
-		Selection:        current,
-		Refresh:          refresh,
-	}
-	if decision.SelectionChanged {
+	decision.Consumed = true
+	decision.SelectionChanged = previousOK != currentOK || previous != current
+	decision.Selection = current
+	switch {
+	case narrowingDropped:
+		decision.SelectionEffect = SelectionEffectFilter
+	case decision.SelectionChanged:
 		decision.SelectionEffect = SelectionEffectPreview
 	}
-	if collapsedChanged {
+	if unfolded {
 		decision.Mutations = []Mutation{m.saveFolds()}
 	}
 	return decision, found
+}
+
+func (m *Model) unfoldAncestors(path string) (unfolded bool) {
+	for ancestor := path; ancestor != ""; ancestor = ParentGroup(ancestor) {
+		if m.collapsed[ancestor] {
+			delete(m.collapsed, ancestor)
+			unfolded = true
+		}
+	}
+	return unfolded
 }
 
 func (m *Model) ForgetGroups(paths []string) Decision {
@@ -530,13 +535,7 @@ func (m *Model) RevealGroup(path string) Decision {
 	m.filter = statusFilterAll
 	m.search = ""
 	m.searching = false
-	collapsedChanged := false
-	for ancestor := path; ancestor != ""; ancestor = ParentGroup(ancestor) {
-		if m.collapsed[ancestor] {
-			delete(m.collapsed, ancestor)
-			collapsedChanged = true
-		}
-	}
+	collapsedChanged := m.unfoldAncestors(path)
 	m.rebuildRows()
 	m.Focus(Selection{Kind: GroupRow, Group: path})
 	current, currentOK := m.Selected()

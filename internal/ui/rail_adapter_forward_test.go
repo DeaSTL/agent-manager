@@ -280,3 +280,29 @@ func TestFocusRequestLeavesTheArchiveView(t *testing.T) {
 		t.Fatalf("cursor is on %+v, want deep", sess)
 	}
 }
+
+// A message already on the status bar, a success one included, says
+// nothing about why this open did not land, so only a failure the open
+// itself reported reaches the caller.
+func TestFocusAnswerNamesOnlyAFailureTheOpenReported(t *testing.T) {
+	t.Parallel()
+	m, deep := focusRequestModel(t)
+	for _, step := range []struct {
+		name       string
+		reportedBy func()
+		want       string
+	}{
+		{"stale success", func() {}, "moved on before it opened"},
+		{"failure during the open", func() { m.reportErr("pane is gone") }, "pane is gone"},
+	} {
+		answer := make(chan error, 1)
+		m.focus.forward = pendingForward{sessionID: deep.ID, answer: answer}
+		m.reportDone("renamed top")
+		before := m.errBar
+		step.reportedBy()
+		m.answerForward(deep.ID, false, before)
+		if err := <-answer; err == nil || !strings.Contains(err.Error(), step.want) {
+			t.Fatalf("%s: answer = %v, want it to say %q", step.name, err, step.want)
+		}
+	}
+}
