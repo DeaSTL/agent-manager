@@ -30,13 +30,42 @@ func TestQuickEnterClearsBeforeTypingNextPrompt(t *testing.T) {
 	}
 }
 
+func TestQuickAltEnterSendsAndKeepsTheText(t *testing.T) {
+	t.Parallel()
+	m := buildModel(t)
+	createSession(t, m, "target", t.TempDir(), "")
+	m.selectSessionRow(t, "target")
+	m.openQuickMode()
+	var delivered []string
+	m.services.quickSessionExists = func(*tmux.Driver, string) (bool, error) { return true, nil }
+	m.services.quickSendText = func(_ *tmux.Driver, _ string, text string) (tmux.SendResult, error) {
+		delivered = append(delivered, text)
+		return tmux.SendResult{Phase: tmux.SendPhaseSubmitted}, nil
+	}
+	m.quick().Input.SetValue("run the tests")
+	for range 2 {
+		m.handleQuickKey(tea.KeyMsg{Type: tea.KeyEnter, Alt: true})
+		if got := m.quick().Input.Value(); got != "run the tests" {
+			t.Fatalf("alt+enter cleared the bar, got %q", got)
+		}
+	}
+	for m.effects.Main.Active != nil {
+		m.applyTestMsg(t, m.effects.Main.Active.Command())
+	}
+	if len(delivered) != 2 || delivered[0] != "run the tests" || delivered[1] != "run the tests" {
+		t.Fatalf("delivered %q, want the prompt twice", delivered)
+	}
+	if m.quick() == nil || m.quick().Input.Value() != "run the tests" {
+		t.Fatal("the delivered sends took the kept text off the bar")
+	}
+}
+
 func TestQuickEnterAcceptsBurstOnSameBar(t *testing.T) {
 	t.Parallel()
 	m := buildModel(t)
 	createSession(t, m, "target", t.TempDir(), "")
 	m.selectSessionRow(t, "target")
 	m.openQuickMode()
-	m.quick().CloseAfterSend = true
 	var delivered []string
 	m.services.quickSessionExists = func(*tmux.Driver, string) (bool, error) { return true, nil }
 	m.services.quickSendText = func(_ *tmux.Driver, _ string, text string) (tmux.SendResult, error) {
@@ -70,8 +99,8 @@ func TestQuickEnterAcceptsBurstOnSameBar(t *testing.T) {
 			t.Fatalf("delivered %q, want five distinct prompts in order", delivered)
 		}
 	}
-	if m.quick() != nil {
-		t.Fatal("final completion did not close the untouched bar")
+	if m.quick() == nil || m.quick().Input.Value() != "" {
+		t.Fatal("the bar should stay open and empty after the burst")
 	}
 }
 

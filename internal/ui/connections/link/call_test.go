@@ -91,7 +91,7 @@ func TestAFailedCallReportsAndPicksTheHostBackUp(t *testing.T) {
 	}
 }
 
-func TestASpawnFromTheFormClosesItAndAQuickSpawnClearsTheBar(t *testing.T) {
+func TestASpawnFromTheFormClosesItAndAQuickSpawnLeavesTheBarOpen(t *testing.T) {
 	state := listedState(t, &ssh{})
 	root := &recorder{}
 	state.ApplyCall(root, Call{Op: Spawn, Host: "box", FromForm: true, ComposerGen: 4}, Result{Session: sessioncmd.Session{Name: "fresh"}}, nil)
@@ -100,8 +100,8 @@ func TestASpawnFromTheFormClosesItAndAQuickSpawnClearsTheBar(t *testing.T) {
 	}
 	root = &recorder{}
 	state.ApplyCall(root, Call{Op: Spawn, Host: "box", ComposerGen: 5, Submission: spawn.Submission{ID: 1, Draft: "go"}}, Result{Session: sessioncmd.Session{Name: "fresh"}}, nil)
-	if root.cleared != 1 || len(root.closed) != 0 {
-		t.Fatalf("cleared %d, closed %v", root.cleared, root.closed)
+	if len(root.closed) != 0 {
+		t.Fatalf("closed %v, want the bar left open", root.closed)
 	}
 	if want := "started fresh on box"; len(root.done) != 1 || root.done[0] != want {
 		t.Fatalf("status = %q, want %q", root.done, want)

@@ -25,6 +25,7 @@ func Decide(h Effects, q *Surface, msg tea.KeyMsg) tea.Cmd {
 }
 
 func Execute(h Effects, q *Surface, request Request, cmd tea.Cmd) tea.Cmd {
+	kept := q.Submission()
 	var follow tea.Cmd
 	switch {
 	case request.Move != 0:
@@ -43,6 +44,9 @@ func Execute(h Effects, q *Surface, request Request, cmd tea.Cmd) tea.Cmd {
 		follow = h.LoadSaved()
 	case request.InsertSaved != nil:
 		q.InsertSaved(*request.InsertSaved)
+	}
+	if request.Keep {
+		q.Restore(kept)
 	}
 	return tea.Batch(cmd, follow)
 }
