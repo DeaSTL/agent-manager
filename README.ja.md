@@ -28,15 +28,15 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/YoanWai/agent-manager/stargazers"><img src="https://img.shields.io/github/stars/YoanWai/agent-manager?style=for-the-badge&label=stars&labelColor=1f2328&color=96591f" alt="stars"></a>
-  <a href="https://github.com/YoanWai/agent-manager"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2FYoanWai%2Fagent-manager%2Fbadges%2Fclones.json&style=for-the-badge&labelColor=1f2328" alt="clones in the last 14 days"></a>
-  <a href="https://github.com/YoanWai/agent-manager/releases/latest"><img src="https://img.shields.io/github/v/release/YoanWai/agent-manager?style=for-the-badge&label=release&labelColor=1f2328&color=2f5f8f" alt="latest release"></a>
+  <a href="https://github.com/wainmann/agent-manager/stargazers"><img src="https://img.shields.io/github/stars/wainmann/agent-manager?style=for-the-badge&label=stars&labelColor=1f2328&color=96591f" alt="stars"></a>
+  <a href="https://github.com/wainmann/agent-manager"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fwainmann%2Fagent-manager%2Fbadges%2Fclones.json&style=for-the-badge&labelColor=1f2328" alt="clones in the last 14 days"></a>
+  <a href="https://github.com/wainmann/agent-manager/releases/latest"><img src="https://img.shields.io/github/v/release/wainmann/agent-manager?style=for-the-badge&label=release&labelColor=1f2328&color=2f5f8f" alt="latest release"></a>
   <a href="https://discord.gg/ecS88An7pF"><img src="https://img.shields.io/badge/discord-join-5865F2?style=for-the-badge&logo=discord&logoColor=white&labelColor=1f2328" alt="Discord"></a>
   <br>
-  <a href="https://github.com/YoanWai/agent-manager/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/YoanWai/agent-manager/ci.yml?branch=main&style=for-the-badge&label=build&labelColor=1f2328&color=2f7f62" alt="CI status"></a>
-  <a href="https://app.codecov.io/gh/YoanWai/agent-manager"><img src="https://img.shields.io/codecov/c/github/YoanWai/agent-manager?branch=main&style=for-the-badge&label=coverage&labelColor=1f2328" alt="test coverage"></a>
+  <a href="https://github.com/wainmann/agent-manager/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/wainmann/agent-manager/ci.yml?branch=main&style=for-the-badge&label=build&labelColor=1f2328&color=2f7f62" alt="CI status"></a>
+  <a href="https://app.codecov.io/gh/wainmann/agent-manager"><img src="https://img.shields.io/codecov/c/github/wainmann/agent-manager?branch=main&style=for-the-badge&label=coverage&labelColor=1f2328" alt="test coverage"></a>
   <a href="https://pkg.go.dev/github.com/YoanWai/agent-manager"><img src="https://img.shields.io/badge/go.dev-reference-007d9c?style=for-the-badge&logo=go&logoColor=white" alt="Go package reference"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/github/license/YoanWai/agent-manager?style=for-the-badge&label=license&labelColor=1f2328&color=59636e" alt="licence"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/wainmann/agent-manager?style=for-the-badge&label=license&labelColor=1f2328&color=59636e" alt="licence"></a>
 </p>
 
 ![クイックプロンプトバーから 3 つのエージェントを起動。Claude Code、Codex、Gemini CLI を 1 つずつ、毎回 tab で CLI を選び、新しいエージェントがリストに並んでいく](docs/demo.gif)
@@ -65,103 +65,37 @@ agent-manager は、すでにお使いの CLI の上にかぶせる薄いレイ�
 
 ## 対応 CLI
 
-ステータス検出は **Claude Code**、**OpenCode**、**Codex**、**Grok Build**、**Gemini CLI**、**Antigravity CLI**、**Pi**、**Command Code**、**Hermes Agent**、**Muse Code**、**Oh My Pi**、**Cursor CLI** に対応しています。各ツールの起動、復帰、分岐、ステータスのルールはバイナリに組み込まれているので（Hermes、Antigravity、Oh My Pi、Cursor CLI は分岐に非対応）、アップグレードするだけで全ツールのルールが最新になります（[Configuration](docs/configuration.md#agent-clis) を参照）。リストにない CLI は[機能リクエスト](https://github.com/YoanWai/agent-manager/issues/new/choose)からどうぞ。
+ステータス検出は **Claude Code**、**OpenCode**、**Codex**、**Grok Build**、**Gemini CLI**、**Antigravity CLI**、**Pi**、**Command Code**、**Hermes Agent**、**Muse Code**、**Oh My Pi**、**Cursor CLI** に対応しています。各ツールの起動、復帰、分岐、ステータスのルールはバイナリに組み込まれているので（Hermes、Antigravity、Oh My Pi、Cursor CLI は分岐に非対応）、アップグレードするだけで全ツールのルールが最新になります（[Configuration](docs/configuration.md#agent-clis) を参照）。リストにない CLI は[機能リクエスト](https://github.com/wainmann/agent-manager/issues/new/choose)からどうぞ。
 
 ## インストール
 
-macOS と Linux で動きます。Windows では [psmux](docs/install.md#windows) でネイティブに、または WSL2 内で動きます。
-
-### Homebrew（macOS / Linux）
+macOS、Linux、Windows（[psmux](docs/install.md#windows) を使用）、WSL2 で動きます。
 
 ```bash
-brew install agent-manager
+brew install agent-manager                         # Homebrew（macOS / Linux）
+brew install --cask yoanwai/tap/agent-manager      # Homebrew cask、ビルド済みバイナリ
+yay -S agent-manager-bin                           # Arch Linux（AUR）
+mise use -g github:wainmann/agent-manager          # mise
+go install github.com/YoanWai/agent-manager@latest # Go
 ```
 
-tmux がなければ一緒にインストールされ、Homebrew 自体が git で動くので、依存関係は両方そろいます。これは homebrew-core の formula で、ソースからビルドします。ビルド済みバイナリを使う場合は `brew install --cask yoanwai/tap/agent-manager` です。
-
-### Scoop（Windows）
+```bash
+# インストールスクリプト（macOS / Linux / WSL2）
+curl -fsSL https://github.com/wainmann/agent-manager/releases/latest/download/install.sh | sh
+```
 
 ```powershell
+# インストールスクリプト（Windows）
+irm https://github.com/wainmann/agent-manager/releases/latest/download/install.ps1 | iex
+```
+
+```powershell
+# Scoop（Windows）
 scoop bucket add yoanwai https://github.com/YoanWai/scoop-bucket
 scoop install yoanwai/agent-manager
 ```
 
-その bucket で公開されているバージョンがインストールされ、Scoop が psmux も一緒にインストールします。bucket は独立して更新されるため、最新リリースより遅れることがあります。更新するときは agent-manager を閉じてから `scoop update agent-manager` を実行します。グローバルインストールの場合は、管理者権限の PowerShell で `scoop update agent-manager --global` を実行します。アプリ内のアップデーターは Scoop のバイナリを置き換えず、この手順を表示します。
-
-<!--
-winget is not listed: microsoft/winget-pkgs has no YoanWai.AgentManager
-(manifest PR 453457 is open), and release publishing is PR #782.
-When a release has published the package, add a winget section here with:
-winget install --id YoanWai.AgentManager -e
--->
-
-### インストールスクリプト（macOS / Linux）
-
-スクリプトをダウンロードし、中身を確認してから実行します。`sh install.sh` はダウンロードが成功したときだけ実行されます。
-
-```bash
-curl -fsSL -o install.sh https://raw.githubusercontent.com/YoanWai/agent-manager/main/install.sh &&
-sh install.sh
-```
-
-これは `main` ブランチにあるスクリプトで、`checksums.txt` には含まれていません。`install.sh` を初めて添付するリリースで、このファイルが `checksums.txt` に載ります。それ以降は、添付されたファイルをダウンロードし、`gh` にログインしていれば、スクリプトを実行する前に検証してください。
-
-```bash
-curl -fsSL -o install.sh https://github.com/YoanWai/agent-manager/releases/latest/download/install.sh &&
-gh attestation verify install.sh --repo YoanWai/agent-manager &&
-sh install.sh
-```
-
-そのタグができるまで上のリリース URL にはファイルがないため、それまでは最初のコマンドを使ってください。
-
-お使いのプラットフォーム向けの最新リリースをダウンロードし、公開されているチェックサムで検証してから `~/.local/bin` にインストールします。続いて tmux 3.1 以降と git を確認します。macOS では Homebrew を提案し、Homebrew がなければ先にそのインストールを提案します。Linux では apt、dnf、pacman、zypper、apk、Homebrew を提案し、デスクトップ環境ではクリップボードと通知のパッケージも提案します。断った場合はコマンドを表示します。ターミナルがない状態で実行すると、確認をスキップしてバイナリだけをインストールします。`AGENT_MANAGER_INSTALL_DIR` でインストール先を、`AGENT_MANAGER_VERSION` でバージョンを指定でき、`AGENT_MANAGER_INSTALL_DEPS=1` で依存関係の確認にあらかじめ同意できます（`=0` でスキップ）。`AGENT_MANAGER_VERIFY_ATTESTATION=1` を設定すると、ダウンロードしたアーカイブを `gh attestation verify` が受け入れない限りインストールしません。`gh` のないマシンにインストールする場合は設定しないでください。`gh` は証明の拒否、未ログイン、ネットワークエラーに同じ終了コードを返すため、スクリプトはこれらを区別しません。
-
-先にファイルを確認せずに実行する場合：
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/YoanWai/agent-manager/main/install.sh | sh
-```
-
-### 検証済み zip（Windows）
-
-お使いのアーキテクチャ向けの Windows zip と `checksums.txt` を同じ[リリース](https://github.com/YoanWai/agent-manager/releases/latest)からダウンロードします。展開する前に、zip の SHA-256 を `checksums.txt` の該当行と照合してください。[Windows の手動インストール](docs/install.md#download-and-verify-the-zip)に、PowerShell のコマンド、任意の来歴証明（provenance）の検証、依存関係のセットアップがあります。
-
-### インストールスクリプト（Windows）
-
-スクリプトをダウンロードし、中身を確認してから実行します。インストーラーはダウンロードが成功したときだけ実行されます。Windows PowerShell 5.1 には `&&` がないため、`if ($?)` で判定します。リリースに `install.ps1` が添付されるまでは、確認するファイルは `main` ブランチにあるものです。それは `checksums.txt` には含まれていません。
-
-```powershell
-irm https://raw.githubusercontent.com/YoanWai/agent-manager/main/install.ps1 -OutFile install.ps1
-if ($?) {
-    Get-Content .\install.ps1
-    Unblock-File .\install.ps1
-    powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1
-}
-```
-
-リリースに `install.ps1` が添付され、`checksums.txt` に載ったら、そちらをダウンロードしてください。`gh` にログインしていれば、ダウンロードの後、インストーラーの前に検証します。`gh` がない場合はこの例は止まります。そうしないと PowerShell は直前の `$LASTEXITCODE` を保持し、前のコマンドの `0` が検証成功のように見えてしまうためです。そのタグができるまで、このリリース URL にはファイルがありません。
-
-```powershell
-irm https://github.com/YoanWai/agent-manager/releases/latest/download/install.ps1 -OutFile install.ps1
-if ($?) {
-    Get-Command gh -ErrorAction Stop | Out-Null
-    if ($?) {
-        gh attestation verify .\install.ps1 --repo YoanWai/agent-manager
-        if ($LASTEXITCODE -ne 0) { throw 'attestation verification failed' }
-        if ($LASTEXITCODE -eq 0) {
-            Get-Content .\install.ps1
-            Unblock-File .\install.ps1
-            powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1
-        }
-    }
-}
-```
-
-実行ポリシーが設定されていない Windows クライアントでは、有効なポリシーは Restricted なので、すべての `.ps1` が拒否されます。`-ExecutionPolicy Bypass` はファイルを確認した後、そのプロセスにだけ適用されます。ポリシーがすでに RemoteSigned なら、`Unblock-File` のあと `.\install.ps1` で十分です。RemoteSigned は Mark of the Web が付いたままの署名なしスクリプトを拒否します。ブラウザでのダウンロードはこの印を付けます。`irm -OutFile` は付けません（Microsoft のドキュメントでは、`Invoke-WebRequest` はインターネットゾーンの印を付けないとされています）。その場合 `Unblock-File` は何もしません。
-
-最新リリースを `%LOCALAPPDATA%\Programs\agent-manager` にインストールし、ユーザーの `Path` に追加し、psmux、git、PowerShell 7 がなければインストールを提案します。`AGENT_MANAGER_INSTALL_DEPS=1` で同意、`AGENT_MANAGER_INSTALL_DEPS=0` で確認をスキップします。ターミナルがない場合は確認をスキップし、バイナリはインストールされたままになります。`AGENT_MANAGER_VERIFY_ATTESTATION` はシェルスクリプトと同じように動きます。
-
-Arch Linux、mise、`go install`、ビルド済みバイナリ、Windows（ネイティブと WSL2）、依存関係、更新方法：[docs/install.md](docs/install.md)。
+全プラットフォーム向けのビルド済みバイナリは [Releases](https://github.com/wainmann/agent-manager/releases) にあります。依存関係、ダウンロードの検証、更新、アンインストールは [docs/install.md](docs/install.md) を参照してください。
 
 ## 使い方
 
@@ -218,17 +152,17 @@ CI が実行するチェックは [CONTRIBUTING.md](.github/CONTRIBUTING.md) を
 
 ## コミュニティ
 
-Discord の [Agent Manager Community](https://discord.gg/ecS88An7pF) に参加できます。質問やセットアップの相談は #help、自分のセットアップの共有は #workflows、コントリビュートの話は #dev へどうぞ。バグや機能リクエストは [GitHub issues](https://github.com/YoanWai/agent-manager/issues/new/choose) へお願いします。
+Discord の [Agent Manager Community](https://discord.gg/ecS88An7pF) に参加できます。質問やセットアップの相談は #help、自分のセットアップの共有は #workflows、コントリビュートの話は #dev へどうぞ。バグや機能リクエストは [GitHub issues](https://github.com/wainmann/agent-manager/issues/new/choose) へお願いします。
 
 ## コントリビュート
 
 **コントリビューターとコラボレーターを募集しています。** agent-manager は一緒に開発してくれる人を積極的に探しています。誰も担当していない issue は自由に取り組めます。issue にコメントして担当を宣言してください。継続的にコントリビュートしてくれる人はコラボレーターに招待します。[Discord](https://discord.gg/ecS88An7pF) の #dev で気軽に声をかけてください。
 
-バグ報告、機能のアイデア、プルリクエストを歓迎します。開発環境と CI のチェックは [CONTRIBUTING.md](.github/CONTRIBUTING.md) にあります。質問や共有したいセットアップは [Discussions](https://github.com/YoanWai/agent-manager/discussions) へどうぞ。セキュリティの問題は[非公開のセキュリティアドバイザリ](https://github.com/YoanWai/agent-manager/security/advisories/new)から報告してください。詳しくは [SECURITY.md](.github/SECURITY.md) を参照してください。
+バグ報告、機能のアイデア、プルリクエストを歓迎します。開発環境と CI のチェックは [CONTRIBUTING.md](.github/CONTRIBUTING.md) にあります。質問や共有したいセットアップは [Discussions](https://github.com/wainmann/agent-manager/discussions) へどうぞ。セキュリティの問題は[非公開のセキュリティアドバイザリ](https://github.com/wainmann/agent-manager/security/advisories/new)から報告してください。詳しくは [SECURITY.md](.github/SECURITY.md) を参照してください。
 
 ### コントリビューター
 
-<a href="https://github.com/YoanWai/agent-manager/graphs/contributors"><img src="https://raw.githubusercontent.com/YoanWai/agent-manager/badges/contributors.png" alt="Contributors"></a>
+<a href="https://github.com/wainmann/agent-manager/graphs/contributors"><img src="https://raw.githubusercontent.com/wainmann/agent-manager/badges/contributors.png" alt="Contributors"></a>
 
 ## ライセンス
 

@@ -44,6 +44,7 @@ func TestMain(m *testing.M) {
 }
 
 func runTests(m *testing.M) int {
+	ConfigFile = os.DevNull
 	// psmux keeps its servers' registry under its data directory, which a
 	// fresh one isolates the way the private socket does for tmux.
 	if runtime.GOOS == "windows" {
@@ -73,7 +74,7 @@ func runTests(m *testing.M) int {
 
 // tmuxCmd builds a raw tmux command aimed at the test socket.
 func tmuxCmd(args ...string) *exec.Cmd {
-	cmd := exec.Command(Binary, append([]string{"-L", testSocket}, args...)...)
+	cmd := exec.Command(Binary, SocketArgs(testSocket, args...)...)
 	cmd.Env = commandEnv()
 	return cmd
 }
@@ -384,7 +385,7 @@ func TestServerVersionCachesFirstSuccess(t *testing.T) {
 		t.Fatalf("read call log: %v", err)
 	}
 	calls := strings.Split(strings.TrimSpace(string(logged)), "\n")
-	want := "-L " + testSocket + " -V"
+	want := strings.Join(SocketArgs(testSocket, "-V"), " ")
 	if !slices.Equal(calls, []string{want, want}) {
 		t.Fatalf("calls = %q, want two %q calls", calls, want)
 	}

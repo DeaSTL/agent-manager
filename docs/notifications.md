@@ -76,7 +76,7 @@ into Settings is a HEADS UP message.
 | `pgup` `pgdn` `home` `end` | Scroll the message |
 | `↵` | Open the release notes or the feed link |
 | `u` | Update, on an available release |
-| `x` | Dismiss the message for good |
+| `x` | Dismiss the message for good, except a pinned one |
 | `r` | Refresh the release catalog and the feed |
 | `esc` or `q` | Close |
 
@@ -183,7 +183,7 @@ and can target a version range.
       "What users will observe.",
       "The safe action to take while a fix is prepared."
     ],
-    "url": "https://github.com/YoanWai/agent-manager/issues/234",
+    "url": "https://github.com/wainmann/agent-manager/issues/234",
     "action": "Read the issue",
     "min_version": "v0.46.0",
     "max_version": "v0.46.0",
@@ -221,6 +221,12 @@ Rules:
   `Open link`. New entries put the button text here and leave a "Press Enter to
   ..." line out of `body`. Entries shipped before v0.46.0 keep that line because
   older builds still show it.
+- `pinned` is optional. A pinned entry sits first in its list group, and `x`
+  does not dismiss it, so it stays until `expires_at`. Opening it still marks
+  it read. A pinned entry needs an `expires_at`. Builds before v0.47.0 ignore
+  it and let the entry be dismissed. Builds after v0.47.0 show a pinned entry
+  even where someone dismissed it before it was pinned. Unpinning it hides it
+  for them again.
 - `min_version` and `max_version` are inclusive and optional. Time-sensitive or
   version-specific messages should have narrow version bounds.
 - `expires_at` is an optional RFC 3339 timestamp. The message shows
@@ -234,6 +240,5 @@ editorial feed both check every 10 minutes with an HTTP ETag, independent of
 the installed version. Each is cached in a file of its own format,
 `release-catalog.json` and `feed-messages.json`, stamped with the parser that
 wrote it. A build that finds another parser's stamp downloads the whole list
-once. `update-check.json` and `message-feed.json` belong to versions before
-v0.40.0 and are read only to fill the panel on the first start after an
-upgrade.
+once. `update-check.json` belongs to versions before v0.40.0 and is read only
+to fill the panel on the first start after an upgrade.

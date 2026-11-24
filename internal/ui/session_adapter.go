@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/YoanWai/agent-manager/internal/config"
+	"github.com/YoanWai/agent-manager/internal/lifecyclehook"
 	"github.com/YoanWai/agent-manager/internal/sessioncmd"
 	"github.com/YoanWai/agent-manager/internal/store"
 	uidialogs "github.com/YoanWai/agent-manager/internal/ui/dialogs"
@@ -688,6 +689,7 @@ func (m *Model) launchNewSession(sess store.Session, tool config.CLI, baseComman
 		BaseCommand:      baseCommand,
 		Pane:             sessioncmd.PaneSize{Width: paneWidth, Height: paneHeight},
 		RollbackWorktree: opts.rollbackWorktree,
+		Reason:           lifecyclehook.ReasonSpawn,
 	})
 	if err != nil {
 		return err
@@ -697,7 +699,7 @@ func (m *Model) launchNewSession(sess store.Session, tool config.CLI, baseComman
 	m.recordLaunch(sess.ID)
 	m.workspace.sessions = append(m.workspace.sessions, sess)
 	m.rebuildRows()
-	return launched.LabelError
+	return launched.Caveat()
 }
 
 // recordLaunch marks a row this run launched, so a poll that listed the store

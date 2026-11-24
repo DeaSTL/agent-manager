@@ -103,6 +103,18 @@ func FormatSession(session Session) string {
 	if session.AgentSessionID != "" {
 		line += " on conversation " + session.AgentSessionID
 	}
+	if session.Warning != "" {
+		line += "\nwarning: " + session.Warning
+	}
+	return line
+}
+
+// FormatDeletion is what both fronts print once a delete went through.
+func FormatDeletion(deleted Deletion) string {
+	line := "deleted " + FormatSession(deleted.Session)
+	if deleted.Notice != "" {
+		line += "\n" + deleted.Notice
+	}
 	return line
 }
 
@@ -268,6 +280,16 @@ func FormatGroupRemoval(removal GroupRemoval) string {
 	if len(removal.Moved) > 0 {
 		line += fmt.Sprintf("; %d session(s) moved to the root group: %s",
 			len(removal.Moved), strings.Join(removal.Moved, ", "))
+	}
+	return line
+}
+
+// FormatGroupDeletion names the groups a delete with their sessions removed
+// and how many sessions went with them.
+func FormatGroupDeletion(deletion GroupDeletion) string {
+	line := fmt.Sprintf("deleted %s and the %d session(s) in them", strings.Join(deletion.Removed, ", "), len(deletion.Deleted))
+	if deletion.Notice != "" {
+		line += "\n" + deletion.Notice
 	}
 	return line
 }

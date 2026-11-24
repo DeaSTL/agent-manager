@@ -31,7 +31,7 @@ func (m *Model) openQuickModeWithReader(reader uipersist.Reader) tea.Cmd {
 	if m.rail.ShowArchived() {
 		return nil
 	}
-	names, index := m.cachedSpawnToolSelection()
+	names, index := m.cachedDefaultToolSelection()
 	if len(names) == 0 {
 		m.reportErr("no CLIs enabled: open settings (s), then CLIs, to turn some on")
 		return nil
@@ -73,7 +73,7 @@ func (m *Model) openQuickModeWithReader(reader uipersist.Reader) tea.Cmd {
 func (m *Model) applyCachedQuickDefaults() tea.Cmd {
 	q := m.quick()
 	before := q.Tool()
-	q.SetTools(m.cachedSpawnToolSelection())
+	q.SetTools(m.cachedDefaultToolSelection())
 	q.CloseAfterSend = m.closeAfterSend()
 	q.DefaultWorktree(m.cachedSpawnWorktreeDefault(m.quickTargetGroup()))
 	toolName := q.Tool()
@@ -177,7 +177,7 @@ const quickModeTitle = "Quick prompt mode"
 func (m *Model) quickFooter(q *uiquick.Surface) legend {
 	edge := uitheme.KeyStyle().Render(m.chrome().QuickEdgeGlyph)
 	gutter := strings.Repeat(" ", quickGutter-1)
-	painted := paintLegend([]legendSection{{Title: quickModeTitle, Pairs: q.Legend(m.quickBarHost())}}, max(m.layout.width-1, 1), m.prefs.glyphMode)
+	painted := paintLegend([]legendSection{{Title: quickModeTitle, Pairs: q.Legend(m.quickBarHost(), m.prefs.glyphMode)}}, max(m.layout.width-1, 1), m.prefs.glyphMode)
 	keys := uitheme.SplitLines(painted.Text)
 	rows := uiquick.BarMaxRows + 1
 	if q.Picking() != uiquick.PickNone {

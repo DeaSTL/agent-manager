@@ -41,8 +41,34 @@ func TestCatalogIsReadFromTheKeptAnswer(t *testing.T) {
 	}
 	m.applyCmd(t, cmd)
 	openFormOnClaude(t, m)
-	if list := m.form().Choice().Suggestions(m.spawnHost(), "claude"); len(list) != 3 {
+	if list := m.form().Choice().Suggestions(m.spawnHost(), "claude"); len(list) != 4 {
 		t.Fatalf("list from the kept answer = %+v", list)
+	}
+}
+
+// Tab moves the quick bar to a CLI this manager has not asked yet, and the
+// bar reads that CLI's models instead of waiting on them for good.
+func TestQuickTabReadsTheModelsOfTheCLIItLandsOn(t *testing.T) {
+	t.Parallel()
+	m := buildModel(t)
+	m.services.configDir = t.TempDir()
+	tool := m.services.cfg.CLIs["claude-hooked"]
+	tool.Catalog, tool.CatalogCommand, tool.ModelArgs = "claude", "sh", "--model {model}"
+	m.services.cfg.CLIs["claude-hooked"] = tool
+	if err := catalog.Keep(m.services.configDir, "claude-hooked", tool, claudeAnswer); err != nil {
+		t.Fatal(err)
+	}
+	m.openQuickMode()
+	_, cmd := m.handleQuickKey(tea.KeyMsg{Type: tea.KeyTab})
+	if m.quickTool() != "claude-hooked" {
+		t.Fatalf("after tab, quick tool = %q want claude-hooked", m.quickTool())
+	}
+	if cmd == nil {
+		t.Fatal("tab asked claude-hooked for nothing")
+	}
+	m.applyCmd(t, cmd)
+	if note, listed := spawn.ModelNote(m.quickBarHost(), "claude-hooked", spawn.Styles{}); !listed {
+		t.Fatalf("model row after the answer: %q", note)
 	}
 }
 

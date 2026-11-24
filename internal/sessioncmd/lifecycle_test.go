@@ -490,12 +490,22 @@ func TestRelaunchKillsTheNewPaneWhenItsLaunchCannotPersist(t *testing.T) {
 		}
 		return h.store.SetAgentLaunchedAt(sess.ID, launchedAt)
 	}
-	_, err = lifecycle.launchExisting(sess, tool, "sleep 30", PaneSize{Width: 80, Height: 24}, false, false, bind)
+	_, err = lifecycle.launchExisting(sess, tool, "sleep 30", PaneSize{Width: 80, Height: 24}, false, false, "", sess.AgentSessionID, bind)
 	if !errors.Is(err, store.ErrSessionGone) {
 		t.Fatalf("relaunch error = %v, want ErrSessionGone", err)
 	}
 	if h.driver.Exists(sess.ID) {
 		t.Fatal("the pane started for a launch the row never recorded is still running")
+	}
+}
+
+// The status bar is one row; a caveat that broke onto a second row would
+// push the layout out of shape.
+func TestALabelErrorAndAnMCPWarningShareOneLine(t *testing.T) {
+	labelErr := errors.New("rename failed")
+	got := LaunchResult{LabelError: labelErr, Warning: "MCP registration timed out"}.Caveat()
+	if got.Error() != "rename failed; MCP registration timed out" || !errors.Is(got, labelErr) {
+		t.Fatalf("caveat = %q, want both on one line, still wrapping the label error", got)
 	}
 }
 

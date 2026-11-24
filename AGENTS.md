@@ -52,7 +52,8 @@ coverage. [REVIEW.md](REVIEW.md#tool-coverage) defines the allowed exceptions.
   alone, so the modal does not grow a row per knob. A new per-user file,
   environment variable, or hand-edited block is the wrong shape; put the
   choice on a Settings row, behind `agent-manager settings`, or pick a
-  default in code.
+  default in code. `hooks.toml` is the exception, because a hook is a
+  command the user writes, not a value the modal can step through.
 - **Every tool.** New shared behavior covers every applicable tool in the
   same PR. A field, status rule, or command added to one `[clis.*]` block
   is added to every CLI it applies to. A fix to one CLI's adapter or support
@@ -87,6 +88,7 @@ in code or in a user's file stops receiving fixes the day it is written.
 ```bash
 go run .                                        # run the TUI
 go build ./...
+make build                                      # ./agent-manager stamped with git describe
 mkdir -p /tmp/amtest && env -u TMUX TMUX_TMPDIR=/tmp/amtest go test -race ./...
 ```
 
@@ -164,8 +166,8 @@ release or a user's sessions before.
   bindings, so a table read from anywhere else gives a session the wrong
   keys. A `config.toml` from an earlier release is read once, by the import
   in `internal/store`.
-- **`internal/update` verifies the checksum before anything is renamed over
-  the running binary.** No redirect to another host, no wider permissions on
+- **`internal/update` verifies the checksum and the build provenance before
+  anything is renamed over the running binary.** No redirect to another host, no wider permissions on
   the staged file, no write outside the staging directory.
 - **Workflow actions are pinned to a release tag** and bumped by dependabot.
   A branch ref or a missing ref is a defect.
@@ -196,9 +198,11 @@ else's commit. Branch from `origin/main` after a fetch, not from the local
 ## Releases
 
 A push of a `v*` tag runs `.github/workflows/release.yml`: goreleaser on
-Actions with the `RELEASE_TOKEN` and `AUR_KEY` secrets, then build
-provenance attested over `dist/checksums.txt`. Only the admin role can push
-the tag.
+Actions creates the release with the workflow token and pushes the Homebrew
+cask with the `RELEASE_TOKEN` secret (`AUR_KEY`, `SCOOP_TOKEN` and
+`WINGET_TOKEN` cover the other packages), then build provenance is attested
+over `dist/checksums.txt` and `badges.yml` is dispatched. Only the admin role
+can push the tag.
 
 ```bash
 tag=v0.30.0                       # the release being cut
@@ -207,7 +211,8 @@ gh run watch "$(gh run list --workflow release.yml --branch "$tag" --limit 1 --j
 ```
 
 Without `AUR_KEY` the AUR step silently skips and the release still reports
-success while the Arch package goes stale, so the run log must show the
+success while the Arch package goes stale, and without `RELEASE_TOKEN` the
+Homebrew cask skips the same way, so the run log must show the
 release published, the Homebrew cask pushed, and the AUR push. A failed
 run after the release was created is retried from a clean tag. Fix the cause
 on `origin/main`, then `gh release delete "$tag" --cleanup-tag`, which

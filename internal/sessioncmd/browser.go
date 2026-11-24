@@ -241,7 +241,7 @@ func (b *Browsers) Create(sessionID string, opts CreateBrowserOptions) (Browser,
 	if err != nil {
 		return Browser{}, err
 	}
-	info, err := runtime.info(launched, true)
+	info, err := runtime.liveTerminalInfo(launched)
 	if err != nil {
 		return Browser{}, err
 	}

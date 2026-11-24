@@ -205,6 +205,9 @@ func (p *Panel) Key(msg tea.KeyMsg, notices []Notice, f Frame) Outcome {
 			return Outcome{Action: OpenLink, URL: notices[p.cursor].URL}
 		}
 	case "x", "d":
+		if p.cursor < len(notices) && notices[p.cursor].Pinned {
+			return Outcome{}
+		}
 		out := Outcome{Action: Dismiss, ID: p.Selected(notices)}
 		if len(notices) <= 1 {
 			out.Close = true
@@ -495,17 +498,17 @@ func (p Panel) Foot(notices []Notice, f Frame) []presentation.PaintedKey {
 	return keys
 }
 
-func noticeCloseKeys(binding keybind.Binding) string {
+func noticeCloseKeys(binding keybind.Binding, mode presentation.GlyphMode) string {
 	closeKeys := "esc/q"
 	for _, key := range closeBinding(binding).Keys() {
 		if key.Tea() != "q" {
-			closeKeys += "/" + key.Glyph()
+			closeKeys += "/" + keybind.Keys(key).Text("", mode.Effective() == presentation.GlyphModeAdvanced)
 		}
 	}
 	return closeKeys
 }
 func (p Panel) footActions(notices []Notice, f Frame) [][2]string {
-	closeKeys := noticeCloseKeys(f.CloseKey)
+	closeKeys := noticeCloseKeys(f.CloseKey, f.GlyphMode)
 	if len(notices) == 0 {
 		return [][2]string{{"r", "refresh"}, {closeKeys, ""}}
 	}
@@ -519,7 +522,11 @@ func (p Panel) footActions(notices []Notice, f Frame) [][2]string {
 	if notices[p.cursor].IsUpdate() {
 		update = [][2]string{{"u", "update"}}
 	}
-	rest := append(append([][2]string{{"r", "refresh"}}, update...), [][2]string{{"↵", "open"}, {"x", "dismiss"}, {closeKeys, ""}}...)
+	rest := append(append([][2]string{{"r", "refresh"}}, update...), [2]string{"↵", "open"})
+	if !notices[p.cursor].Pinned {
+		rest = append(rest, [2]string{"x", "dismiss"})
+	}
+	rest = append(rest, [2]string{closeKeys, ""})
 	return append(sections, rest...)
 }
 func (p Panel) footPairs(notices []Notice, inner int, f Frame) [][2]string {
@@ -527,8 +534,8 @@ func (p Panel) footPairs(notices []Notice, inner int, f Frame) [][2]string {
 	candidates := [][][2]string{actions}
 	if len(notices) > 0 {
 		candidates = append([][][2]string{
-			append([][2]string{{"↑↓", "message"}, {"pgup/pgdn/home/end", "scroll"}}, actions...),
-			append([][2]string{{"↑↓", "message"}, {"pgup/pgdn", "scroll"}}, actions...),
+			append([][2]string{{presentation.NavigationLabel(f.GlyphMode, "↑↓"), "message"}, {"pgup/pgdn/home/end", "scroll"}}, actions...),
+			append([][2]string{{presentation.NavigationLabel(f.GlyphMode, "↑↓"), "message"}, {"pgup/pgdn", "scroll"}}, actions...),
 		}, candidates...)
 	}
 	for _, pairs := range candidates {

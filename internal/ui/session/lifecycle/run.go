@@ -3,7 +3,9 @@ package lifecycle
 import (
 	"errors"
 	"fmt"
+	"strings"
 
+	"github.com/YoanWai/agent-manager/internal/lifecyclehook"
 	"github.com/YoanWai/agent-manager/internal/sessioncmd"
 	"github.com/YoanWai/agent-manager/internal/status"
 	"github.com/YoanWai/agent-manager/internal/store"
@@ -115,7 +117,7 @@ func Run(services Services, request Request) (Result, error) {
 		}
 		switch target.Action {
 		case Archive:
-			result.Archive, operationErr = services.Lifecycle.ArchiveForHuman(sessioncmd.ArchiveSelection{Sessions: target.Sessions, GroupPath: target.Path})
+			result.Archive, operationErr = services.Lifecycle.ArchiveForHuman(sessioncmd.ArchiveSelection{Sessions: target.Sessions, GroupPath: target.Path, Reason: lifecyclehook.ReasonUser})
 		case Restore:
 			wasDead := map[string]bool{}
 			for _, sess := range target.Sessions {
@@ -155,9 +157,7 @@ func Run(services Services, request Request) (Result, error) {
 					}
 					if err == nil {
 						result.Launches = append(result.Launches, Relaunch{sess.ID, launched})
-						if launched.LabelError != nil {
-							result.Warning = launched.LabelError
-						}
+						result.Warning = addCaveat(result.Warning, launched.Caveat())
 					}
 				}
 				if err != nil {
@@ -247,7 +247,7 @@ func validateSelection(st *store.Store, target Target) (Target, error) {
 	if selection.Members != nil {
 		expected = selection.Members
 	}
-	if !sameSessionIDs(current, expected) {
+	if !sessioncmd.SameSessionIDs(current, expected) {
 		return target, errors.New("sessions changed since confirmation; review the selection and try again")
 	}
 	if selection.Members != nil {
@@ -276,23 +276,6 @@ func ActiveSessions(sessions []store.Session) []store.Session {
 		}
 	}
 	return active
-}
-
-func sameSessionIDs(left, right []store.Session) bool {
-	if len(left) != len(right) {
-		return false
-	}
-	ids := make(map[string]bool, len(left))
-	for _, sess := range left {
-		ids[sess.ID] = true
-	}
-	for _, sess := range right {
-		if !ids[sess.ID] {
-			return false
-		}
-		delete(ids, sess.ID)
-	}
-	return len(ids) == 0
 }
 
 func archivedSessions(sessions []store.Session) []store.Session {
@@ -449,7 +432,7 @@ func RunAttach(services Services, request AttachRequest) (AttachResult, error) {
 			return
 		}
 		if sess.Status == status.Finished {
-			if ackErr := services.Store.AcknowledgeFinished(request.ID); ackErr != nil {
+			if ackErr := services.Store.Acknowledge(request.ID); ackErr != nil {
 				result.Fatal = ackErr
 				return
 			}
@@ -465,3 +448,17 @@ func RunAttach(services Services, request AttachRequest) (AttachResult, error) {
 // DegradedResumeText says a revive fell back to the working directory's most
 // recent conversation because its own conversation id was never captured.
 func DegradedResumeText(name string) string { return uisession.DegradedResumeText(name) }
+
+// addCaveat keeps every relaunch's caveat for the one status line. Sessions
+// of one tool that time out in the same batch report the same text, once.
+func addCaveat(warning, caveat error) error {
+	switch {
+	case caveat == nil:
+		return warning
+	case warning == nil:
+		return caveat
+	case strings.Contains(warning.Error(), caveat.Error()):
+		return warning
+	}
+	return fmt.Errorf("%w; %w", warning, caveat)
+}

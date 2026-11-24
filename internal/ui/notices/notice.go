@@ -15,7 +15,7 @@ const (
 	ConfigNotImported = "config-not-imported"
 )
 
-const RepoURL = "https://github.com/YoanWai/agent-manager"
+const RepoURL = "https://github.com/wainmann/agent-manager"
 
 // Kind groups notices in the list, in the order the groups are shown.
 type Kind uint8
@@ -44,6 +44,7 @@ type Notice struct {
 	RangeComplete bool
 	URL           string
 	Action        string
+	Pinned        bool
 	Expires       time.Time
 	Unread        bool
 }
@@ -114,5 +115,6 @@ type Message struct {
 	Accent  []string
 	URL     string
 	Action  string
+	Pinned  bool
 	Expires time.Time
 }

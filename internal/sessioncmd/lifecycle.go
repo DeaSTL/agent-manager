@@ -9,6 +9,7 @@ import (
 
 	"github.com/YoanWai/agent-manager/internal/config"
 	"github.com/YoanWai/agent-manager/internal/launch"
+	"github.com/YoanWai/agent-manager/internal/lifecyclehook"
 	"github.com/YoanWai/agent-manager/internal/status"
 	"github.com/YoanWai/agent-manager/internal/store"
 	"github.com/YoanWai/agent-manager/internal/termbrowser"
@@ -27,11 +28,40 @@ type LaunchRequest struct {
 	Pane             PaneSize
 	BesideSessionID  string
 	RollbackWorktree bool
+	// Reason is session_start's reason. A shell launch (a terminal, the
+	// installer tab) leaves it empty, since a shell row emits nothing.
+	Reason string
 }
 
 type LaunchResult struct {
 	Session    store.Session
 	LabelError error
+	// Warning is set when the agent started without the agent-manager tools
+	// because registering them timed out.
+	Warning string
+}
+
+// Caveat is what the UI reports after a launch that went through: a label
+// that could not be set, or an agent that started without the
+// agent-manager tools. It is nil when there is nothing to report.
+func (r LaunchResult) Caveat() error {
+	return caveat(r.LabelError, r.Warning)
+}
+
+// Caveat is what the UI reports after a relaunch that went through; see
+// LaunchResult.Caveat.
+func (r RelaunchResult) Caveat() error {
+	return caveat(r.LabelError, r.Warning)
+}
+
+func caveat(labelErr error, warning string) error {
+	if warning == "" {
+		return labelErr
+	}
+	if labelErr == nil {
+		return errors.New(warning)
+	}
+	return fmt.Errorf("%w; %s", labelErr, warning)
 }
 
 type RelaunchResult struct {
@@ -41,11 +71,18 @@ type RelaunchResult struct {
 	Degraded     bool
 	LabelError   error
 	Conversation string
+	// Warning is set when the agent started without the agent-manager tools
+	// because registering them timed out.
+	Warning string
 }
 
 type ArchiveSelection struct {
 	Sessions  []store.Session
 	GroupPath string
+	// Reason is session_archive or session_restore's reason. Empty is
+	// emitted as given. A live archive's session_kill uses archive, or
+	// after_turn when Reason is after_turn.
+	Reason string
 }
 
 type ArchiveResult struct {
@@ -100,6 +137,15 @@ func (l *Lifecycle) paneSize(requested PaneSize) (PaneSize, error) {
 	}
 	width, height, err := l.runtime.Store.PaneSize()
 	return PaneSize{Width: width, Height: height}, err
+}
+
+// createPane installs the server-wide bindings from the stored settings,
+// which another process may have changed since this one read them.
+func (l *Lifecycle) createPane(sess store.Session, command string, env map[string]string, size PaneSize) error {
+	if err := ApplyBindingSettings(l.runtime.Store, l.runtime.Driver); err != nil {
+		return err
+	}
+	return l.runtime.Driver.Create(sess.ID, sess.Cwd, command, env, size.Width, size.Height)
 }
 
 func (l *Lifecycle) discardWorktree(sess store.Session) {
@@ -166,6 +212,7 @@ func (l *Lifecycle) Spawn(request SpawnRequest) (LaunchResult, error) {
 		BaseCommand:      request.Plan.Command,
 		Pane:             request.Pane,
 		RollbackWorktree: sess.WorktreeRepo != "",
+		Reason:           lifecyclehook.ReasonSpawn,
 	})
 }
 
@@ -199,7 +246,7 @@ func (l *Lifecycle) Launch(request LaunchRequest) (LaunchResult, error) {
 		discard()
 		return LaunchResult{}, err
 	}
-	command, env, err := launch.Environment(l.runtime.Hooks, sess.Tool, request.Tool, request.BaseCommand, sess.ID, sess.Cwd, time.Time{}, profile)
+	command, env, warning, err := launch.Environment(l.runtime.Hooks, sess.Tool, request.Tool, request.BaseCommand, sess.ID, sess.Cwd, time.Time{}, profile)
 	if err != nil {
 		discard()
 		return LaunchResult{}, err
@@ -209,7 +256,7 @@ func (l *Lifecycle) Launch(request LaunchRequest) (LaunchResult, error) {
 		discard()
 		return LaunchResult{}, err
 	}
-	if err := l.runtime.Driver.Create(sess.ID, sess.Cwd, command, env, size.Width, size.Height); err != nil {
+	if err := l.createPane(sess, command, env, size); err != nil {
 		discard()
 		return LaunchResult{}, err
 	}
@@ -232,13 +279,16 @@ func (l *Lifecycle) Launch(request LaunchRequest) (LaunchResult, error) {
 	if request.BesideSessionID != "" {
 		stored, err := l.runtime.Store.Get(sess.ID)
 		if err != nil {
+			l.emitStart(sess, request.Reason)
 			return LaunchResult{}, err
 		}
 		sess = stored
 	}
+	l.emitStart(sess, request.Reason)
 	return LaunchResult{
 		Session:    sess,
 		LabelError: l.setLabel(sess.ID, SessionLabel(sess.Group, sess.Name)),
+		Warning:    warning,
 	}, nil
 }
 
@@ -258,6 +308,10 @@ func (l *Lifecycle) releaseBrowser(sess store.Session) {
 // Kill leaves the row and conversation intact for revive. Pane capture is
 // best effort, but a captured frame must be persisted before the pane dies.
 func (l *Lifecycle) Kill(sess store.Session) (store.Session, error) {
+	return l.kill(sess, lifecyclehook.ReasonKill)
+}
+
+func (l *Lifecycle) kill(sess store.Session, reason string) (store.Session, error) {
 	if err := l.requireHooks(); err != nil {
 		return store.Session{}, err
 	}
@@ -275,10 +329,12 @@ func (l *Lifecycle) Kill(sess store.Session) (store.Session, error) {
 	if err := l.runtime.Hooks.Remove(sess.ID); err != nil {
 		return store.Session{}, err
 	}
-	if err := l.runtime.Store.UpdateStatus(sess.ID, status.Dead); err != nil {
+	previous, err := l.runtime.Store.SwapStatus(sess.ID, status.Dead)
+	if err != nil {
 		return store.Session{}, err
 	}
 	sess.Status = status.Dead
+	l.emitKilled(sess, reason, previous)
 	return sess, nil
 }
 
@@ -297,10 +353,10 @@ func (l *Lifecycle) Revive(listed store.Session, pane PaneSize) (RelaunchResult,
 	if sess.Archived {
 		return RelaunchResult{}, fmt.Errorf("session %s is archived; restore it before reviving", sess.Name)
 	}
-	return l.revive(sess, pane)
+	return l.revive(sess, pane, lifecyclehook.ReasonRevive)
 }
 
-func (l *Lifecycle) revive(sess store.Session, pane PaneSize) (RelaunchResult, error) {
+func (l *Lifecycle) revive(sess store.Session, pane PaneSize, reason string) (RelaunchResult, error) {
 	var err error
 	tool, ok := l.runtime.Config.Pane(sess.Tool)
 	if !ok {
@@ -316,7 +372,7 @@ func (l *Lifecycle) revive(sess store.Session, pane PaneSize) (RelaunchResult, e
 		return sess.AgentSessionID == "" && tool.ResumeByIDCommand != "" && tool.ResumePickerCommand == ""
 	}
 	if l.runtime.Driver.Exists(sess.ID) {
-		relaunched, err := RelaunchInPane(l.runtime.Driver, l.runtime.Store, l.runtime.Hooks, sess.ID, tool)
+		relaunched, warning, err := RelaunchInPane(l.runtime.Driver, l.runtime.Store, l.runtime.Hooks, l.runtime.Events, sess.ID, tool, l.runtime.Config.IsTool(sess.Tool), reason)
 		if err != nil {
 			return RelaunchResult{}, err
 		}
@@ -324,7 +380,7 @@ func (l *Lifecycle) revive(sess store.Session, pane PaneSize) (RelaunchResult, e
 			InjectPickerKeys(l.runtime.Driver, relaunched.ID, tool)
 		}
 		relaunched.Status = status.Starting
-		return RelaunchResult{Session: relaunched, LaunchedAt: relaunched.AgentLaunchedAt, ReusedPane: true, Degraded: degraded(relaunched)}, nil
+		return RelaunchResult{Session: relaunched, LaunchedAt: relaunched.AgentLaunchedAt, ReusedPane: true, Degraded: degraded(relaunched), Warning: warning}, nil
 	}
 	if sess, err = settleBeforeRevive(l.runtime.Store, l.runtime.Hooks, sess, tool.SessionReport, true); err != nil {
 		return RelaunchResult{}, err
@@ -333,7 +389,7 @@ func (l *Lifecycle) revive(sess store.Session, pane PaneSize) (RelaunchResult, e
 	if err := SnapshotRelaunch(l.runtime.Store, sess, tool, sess.AgentSessionID); err != nil {
 		return RelaunchResult{}, err
 	}
-	return l.launchExisting(sess, tool, relaunchCommand(tool, sess), pane, degraded(sess), true, func(at time.Time) error {
+	return l.launchExisting(sess, tool, relaunchCommand(tool, sess), pane, degraded(sess), true, reason, sess.AgentSessionID, func(at time.Time) error {
 		return l.runtime.Store.SetAgentLaunchedAt(sess.ID, at)
 	})
 }
@@ -360,7 +416,7 @@ func (l *Lifecycle) Restart(listed store.Session, pane PaneSize) (RelaunchResult
 		return l.restartBrowser(sess, pane)
 	}
 	if l.runtime.Driver.Exists(sess.ID) {
-		if _, err := l.Kill(sess); err != nil {
+		if _, err := l.kill(sess, lifecyclehook.ReasonRestart); err != nil {
 			return RelaunchResult{}, err
 		}
 	}
@@ -373,7 +429,7 @@ func (l *Lifecycle) Restart(listed store.Session, pane PaneSize) (RelaunchResult
 	if err := SnapshotRelaunch(l.runtime.Store, sess, tool, agentSessionID); err != nil {
 		return RelaunchResult{}, err
 	}
-	result, err := l.launchExisting(sess, tool, baseCommand, pane, false, false, func(at time.Time) error {
+	result, err := l.launchExisting(sess, tool, baseCommand, pane, false, false, lifecyclehook.ReasonRestart, agentSessionID, func(at time.Time) error {
 		return l.runtime.Store.RestartAgent(sess.ID, agentSessionID, at)
 	})
 	if err == nil {
@@ -396,21 +452,21 @@ func (l *Lifecycle) restartBrowser(sess store.Session, pane PaneSize) (RelaunchR
 			return RelaunchResult{}, err
 		}
 		if running {
-			if _, err := l.Kill(sess); err != nil {
+			if _, err := l.kill(sess, lifecyclehook.ReasonRestart); err != nil {
 				return RelaunchResult{}, err
 			}
 		}
 	}
-	return l.revive(sess, pane)
+	return l.revive(sess, pane, lifecyclehook.ReasonRestart)
 }
 
-func (l *Lifecycle) launchExisting(sess store.Session, tool config.CLI, baseCommand string, pane PaneSize, degraded, injectPicker bool, bind func(time.Time) error) (result RelaunchResult, launchErr error) {
+func (l *Lifecycle) launchExisting(sess store.Session, tool config.CLI, baseCommand string, pane PaneSize, degraded, injectPicker bool, reason, conversation string, bind func(time.Time) error) (result RelaunchResult, launchErr error) {
 	launchedAt := time.Now()
 	profile, err := l.runtime.Store.LaunchEnv(sess.Environment)
 	if err != nil {
 		return RelaunchResult{}, err
 	}
-	command, env, err := launch.Environment(l.runtime.Hooks, sess.Tool, tool, baseCommand, sess.ID, sess.Cwd, launchedAt, profile)
+	command, env, warning, err := launch.Environment(l.runtime.Hooks, sess.Tool, tool, baseCommand, sess.ID, sess.Cwd, launchedAt, profile)
 	if err != nil {
 		return RelaunchResult{}, err
 	}
@@ -418,12 +474,14 @@ func (l *Lifecycle) launchExisting(sess store.Session, tool config.CLI, baseComm
 	if err != nil {
 		return RelaunchResult{}, err
 	}
-	if err := l.runtime.Driver.Create(sess.ID, sess.Cwd, command, env, size.Width, size.Height); err != nil {
+	if err := l.createPane(sess, command, env, size); err != nil {
 		return RelaunchResult{}, err
 	}
+	var announced bool
+	stopped := sess
 	defer func() {
 		if launchErr != nil {
-			_, cleanupErr := l.stopFailedLaunch(sess)
+			_, cleanupErr := l.stopFailedLaunch(stopped, announced)
 			if cleanupErr != nil {
 				launchErr = errors.Join(launchErr, fmt.Errorf("stop failed launch of %s: %w", sess.Name, cleanupErr))
 			}
@@ -439,15 +497,19 @@ func (l *Lifecycle) launchExisting(sess store.Session, tool config.CLI, baseComm
 	if err := l.runtime.Store.UpdateStatus(sess.ID, status.Starting); err != nil {
 		return RelaunchResult{}, err
 	}
+	sess.Status = status.Starting
+	sess.AgentLaunchedAt = launchedAt
+	started := sess
+	started.AgentSessionID = conversation
+	l.emitStart(started, reason)
+	announced, stopped = true, started
 	if err := l.runtime.Store.SetAcked(sess.ID, false); err != nil {
 		return RelaunchResult{}, err
 	}
 	if injectPicker && sess.AgentSessionID == "" && tool.ResumePickerKeys != "" {
 		InjectPickerKeys(l.runtime.Driver, sess.ID, tool)
 	}
-	sess.Status = status.Starting
-	sess.AgentLaunchedAt = launchedAt
-	return RelaunchResult{Session: sess, LaunchedAt: launchedAt, Degraded: degraded, LabelError: labelErr}, nil
+	return RelaunchResult{Session: sess, LaunchedAt: launchedAt, Degraded: degraded, LabelError: labelErr, Warning: warning}, nil
 }
 
 // SetArchivedForSession implements agent-command archive policy: one target,
@@ -476,6 +538,7 @@ func (l *Lifecycle) SetArchivedForSession(callerID, targetID string, archived bo
 		return Session{}, err
 	}
 	target.Archived = archived
+	l.emitArchived(target, lifecyclehook.ReasonAgent, archived)
 	return runtime.sessionInfo(target, running, false), nil
 }
 
@@ -499,12 +562,16 @@ func (l *Lifecycle) ArchiveForHuman(selection ArchiveSelection) (ArchiveResult, 
 			}
 		}
 	}
+	killReason := lifecyclehook.ReasonArchive
+	if selection.Reason == lifecyclehook.ReasonAfterTurn {
+		killReason = lifecyclehook.ReasonAfterTurn
+	}
 	archived := make([]store.Session, 0, len(selection.Sessions))
 	for _, sess := range selection.Sessions {
 		killed := sess
 		if l.runtime.Driver.Exists(sess.ID) {
 			var err error
-			killed, err = l.Kill(sess)
+			killed, err = l.kill(sess, killReason)
 			if err != nil {
 				return partial(archived, false), err
 			}
@@ -512,18 +579,21 @@ func (l *Lifecycle) ArchiveForHuman(selection ArchiveSelection) (ArchiveResult, 
 		archived = append(archived, killed)
 	}
 	if selection.GroupPath != "" {
+		before, beforeErr := l.runtime.Store.ListSessions(true)
 		if err := l.runtime.Store.SetGroupArchived(selection.GroupPath, true); err != nil {
 			return partial(archived, false), err
 		}
 		for i := range archived {
 			archived[i].Archived = true
 		}
+		l.emitGroupChange(selection.GroupPath, before, beforeErr, true, selection.Reason, archived)
 	} else {
 		for i, sess := range archived {
 			if err := l.runtime.Store.SetArchived(sess.ID, true); err != nil {
 				return partial(archived, false), err
 			}
 			archived[i].Archived = true
+			l.emitArchived(archived[i], selection.Reason, true)
 		}
 	}
 	return partial(archived, true), nil
@@ -547,7 +617,7 @@ func (l *Lifecycle) RestoreForHuman(selection ArchiveSelection, pane PaneSize) (
 			if !started[sess.ID] || !sess.Archived {
 				continue
 			}
-			killed, err := l.stopFailedLaunch(sess)
+			killed, err := l.stopFailedLaunch(sess, true)
 			restored[i] = killed
 			if err != nil {
 				operationErr = errors.Join(operationErr, fmt.Errorf("stop failed restore of %s: %w", sess.Name, err))
@@ -564,7 +634,7 @@ func (l *Lifecycle) RestoreForHuman(selection ArchiveSelection, pane PaneSize) (
 			if err != nil {
 				return partial(), err
 			}
-			result, err := l.revive(current, pane)
+			result, err := l.revive(current, pane, lifecyclehook.ReasonRestore)
 			if err != nil {
 				return partial(), err
 			}
@@ -578,9 +648,11 @@ func (l *Lifecycle) RestoreForHuman(selection ArchiveSelection, pane PaneSize) (
 				return partial(), err
 			}
 			restored[len(restored)-1].Archived = false
+			l.emitArchived(restored[len(restored)-1], lifecyclehook.ReasonUser, false)
 		}
 	}
 	if selection.GroupPath != "" {
+		before, beforeErr := l.runtime.Store.ListSessions(true)
 		if err := l.runtime.Store.SetGroupArchived(selection.GroupPath, false); err != nil {
 			return partial(), err
 		}
@@ -588,6 +660,7 @@ func (l *Lifecycle) RestoreForHuman(selection ArchiveSelection, pane PaneSize) (
 		for i := range restored {
 			restored[i].Archived = false
 		}
+		l.emitGroupChange(selection.GroupPath, before, beforeErr, false, lifecyclehook.ReasonUser, restored)
 	}
 	return partial(), nil
 }
@@ -621,6 +694,7 @@ func (l *Lifecycle) DeleteForHuman(selection DeleteSelection) (DeleteResult, err
 		if err := l.runtime.Store.Delete(sess.ID); err != nil {
 			return result, err
 		}
+		l.emitDeleted(sess)
 		result.Deleted = append(result.Deleted, sess)
 		l.cleanupDeletedWorktree(sess, &result)
 	}
@@ -634,6 +708,25 @@ func (l *Lifecycle) DeleteForHuman(selection DeleteSelection) (DeleteResult, err
 		result.RemovedGroups, err = l.runtime.Store.DeleteGroup(selection.GroupPath)
 	}
 	return result, err
+}
+
+// SameSessionIDs reports whether two selections hold the same sessions, so an
+// action refuses rows that changed after the user confirmed them.
+func SameSessionIDs(left, right []store.Session) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	ids := make(map[string]bool, len(left))
+	for _, sess := range left {
+		ids[sess.ID] = true
+	}
+	for _, sess := range right {
+		if !ids[sess.ID] {
+			return false
+		}
+		delete(ids, sess.ID)
+	}
+	return len(ids) == 0
 }
 
 func deleteChildrenFirst(sessions []store.Session) []store.Session {
@@ -711,14 +804,14 @@ func (l *Lifecycle) EndAfterTurn(id string) (EndAfterTurnResult, error) {
 	sessions := append([]store.Session{sess}, children...)
 	result := EndAfterTurnResult{Action: sess.AfterTurn}
 	if sess.AfterTurn == store.AfterTurnArchive {
-		archived, err := l.ArchiveForHuman(ArchiveSelection{Sessions: sessions})
+		archived, err := l.ArchiveForHuman(ArchiveSelection{Sessions: sessions, Reason: lifecyclehook.ReasonAfterTurn})
 		if err != nil {
 			return EndAfterTurnResult{}, err
 		}
 		result.Sessions = archived.Sessions
 	} else {
 		for _, each := range sessions {
-			killed, err := l.Kill(each)
+			killed, err := l.kill(each, lifecyclehook.ReasonAfterTurn)
 			if err != nil {
 				return EndAfterTurnResult{}, err
 			}
@@ -747,16 +840,20 @@ func (l *Lifecycle) Capture(cfg config.Config, snapshot func(string, string) err
 }
 
 // Failed launches must not overwrite the screen saved when the row was archived.
-func (l *Lifecycle) stopFailedLaunch(sess store.Session) (store.Session, error) {
+func (l *Lifecycle) stopFailedLaunch(sess store.Session, announced bool) (store.Session, error) {
 	if l.runtime.Driver.Exists(sess.ID) {
 		if err := l.killPane(sess.ID); err != nil {
 			return sess, err
 		}
 	}
 	hookErr := l.runtime.Hooks.Remove(sess.ID)
+	previous := sess.Status
 	statusErr := l.runtime.Store.UpdateStatus(sess.ID, status.Dead)
 	if statusErr == nil {
 		sess.Status = status.Dead
+		if announced {
+			l.emitRollback(sess, previous)
+		}
 	}
 	return sess, errors.Join(hookErr, statusErr)
 }

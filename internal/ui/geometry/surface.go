@@ -38,6 +38,9 @@ type Root interface {
 	Exit(commit bool)
 	Nudge(delta int)
 	Quit() tea.Cmd
+	// AgentOwnsKeys reports that a focused session sits under the surface,
+	// so a plain key belongs to its agent and only esc is the drag's.
+	AgentOwnsKeys() bool
 	TakeForeground()
 	// ListMouse runs the mouse on the list, which the drag is part of.
 	ListMouse(msg tea.MouseMsg) tea.Cmd
@@ -61,7 +64,7 @@ func (s *Surface) Key(_ surface.Host, msg tea.KeyMsg) (bool, tea.Cmd) {
 		case key == "esc":
 			s.root.Exit(false)
 			return true, nil
-		case quit:
+		case quit && !s.root.AgentOwnsKeys():
 			return true, s.root.Quit()
 		}
 		s.root.Exit(gesture.Moved)
@@ -78,6 +81,12 @@ func (s *Surface) Key(_ surface.Host, msg tea.KeyMsg) (bool, tea.Cmd) {
 		s.root.Nudge(-1)
 	case key == "right" || key == "l":
 		s.root.Nudge(1)
+	case s.root.AgentOwnsKeys():
+		// Over a focused pane the keyboard is the agent's: a key that is not
+		// the gesture's ends it where it stands and travels on, as it does
+		// while a mouse drag holds it.
+		s.root.Exit(gesture.Changed())
+		return false, nil
 	}
 	return true, nil
 }
@@ -93,8 +102,11 @@ func (s *Surface) Wheel(surface.Host, tea.KeyMsg) tea.Cmd { return nil }
 func (s *Surface) View(_ surface.Host, below string) string { return below }
 
 func (s *Surface) Footer() [][2]string {
-	commit := strings.TrimPrefix(s.keys.Binding(keybind.Resize).Glyph("/")+" / release", " / ")
-	return [][2]string{{"←→", "nudge"}, {"drag", "divider"}, {commit, "commit"}, {"esc", "cancel"}}
+	return s.FooterFor("←→", strings.TrimPrefix(s.keys.Binding(keybind.Resize).Glyph("/")+" / release", " / "))
+}
+
+func (s *Surface) FooterFor(nudge, commit string) [][2]string {
+	return [][2]string{{nudge, "nudge"}, {"drag", "divider"}, {commit, "commit"}, {"esc", "cancel"}}
 }
 
 func (s *Surface) Owner() surface.Owner { return surface.Manager }

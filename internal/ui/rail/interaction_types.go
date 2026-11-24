@@ -140,9 +140,10 @@ type AutoScrollTick struct {
 }
 
 type KeyContext struct {
-	ListKeys     keybind.Table
-	ArrowStep    bool
-	EnterFocuses bool
+	ListKeys       keybind.Table
+	ArrowStep      bool
+	StepInAttaches bool
+	EnterFocuses   bool
 }
 
 type MouseContext struct {

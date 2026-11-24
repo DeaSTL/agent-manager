@@ -122,8 +122,8 @@ func TestFormSpawnsOnTheChoice(t *testing.T) {
 	setFormTool(m, slices.Index(formTools(m), "claude"))
 	m.form().RestartChoice(m.spawnHost())
 	list := m.form().Choice().Suggestions(m.spawnHost(), "claude")
-	if len(list) == 0 || list[0] != "opus" {
-		t.Fatalf("the last pick should lead the list: %+v", list)
+	if len(list) < 2 || list[1] != "opus" {
+		t.Fatalf("the last pick should lead the models: %+v", list)
 	}
 }
 
@@ -299,7 +299,7 @@ func TestQuickPromptClicks(t *testing.T) {
 	if m.quick().Picking() != uiquick.PickModel {
 		t.Fatal("the model stretch should open the list")
 	}
-	click(uiquick.ClickEntry, 1)
+	click(uiquick.ClickEntry, 2)
 	if m.quick().Picking() != uiquick.PickNone || m.quick().Choice().Model() != "opus" {
 		t.Fatalf("picking %d model %q", m.quick().Picking(), m.quick().Choice().Model())
 	}
@@ -435,7 +435,7 @@ func TestQuickModelSheetFitsTheColumn(t *testing.T) {
 		t.Fatal("80 columns should give the split")
 	}
 	view := ansi.Strip(preparedView(m))
-	for _, want := range []string{"model for work", "claude's default", "⎇ "} {
+	for _, want := range []string{"model for work", "cli default", "⎇ "} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("%q fell off the column:\n%s", want, view)
 		}
@@ -584,7 +584,7 @@ func TestQuickFooterKeepsShiftTabBesideTab(t *testing.T) {
 	setQuickTool(m, slices.Index(quickTools(m), "claude"))
 	m.quick().RestartChoice(m.spawnHost())
 	var keys []string
-	for _, pair := range m.quick().Legend(m.quickBarHost()) {
+	for _, pair := range m.quick().Legend(m.quickBarHost(), m.prefs.glyphMode) {
 		keys = append(keys, pair[0])
 	}
 	tab := slices.Index(keys, "tab")

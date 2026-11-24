@@ -154,7 +154,7 @@ func TestUpdateNoticeSummarizesEverySkippedRelease(t *testing.T) {
 	}
 	m.Update(uirelease.UpdateMsg{
 		Latest:   "v0.6.0",
-		URL:      "https://github.com/YoanWai/agent-manager/releases/tag/v0.6.0",
+		URL:      "https://github.com/wainmann/agent-manager/releases/tag/v0.6.0",
 		Releases: releases,
 	})
 	m.openNotices("update-v0.6.0")
@@ -388,6 +388,16 @@ func key(s string) tea.KeyMsg {
 		return tea.KeyMsg{Type: tea.KeyDown}
 	case "up":
 		return tea.KeyMsg{Type: tea.KeyUp}
+	case "left":
+		return tea.KeyMsg{Type: tea.KeyLeft}
+	case "right":
+		return tea.KeyMsg{Type: tea.KeyRight}
+	case "home":
+		return tea.KeyMsg{Type: tea.KeyHome}
+	case "end":
+		return tea.KeyMsg{Type: tea.KeyEnd}
+	case "pgdown":
+		return tea.KeyMsg{Type: tea.KeyPgDown}
 	}
 	return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)}
 }
@@ -596,14 +606,19 @@ func TestNoticesEscCloses(t *testing.T) {
 }
 
 func TestDevBuildNeverGreets(t *testing.T) {
-	st := noticeStore(t)
-	m := noticeModel(st, "dev")
-	m.openStartupGreeting()
-	if !m.listClear() {
-		t.Fatal("a dev build must not open a startup greeting")
-	}
-	if seen, _ := st.Setting(uirelease.LastSeenSetting); seen != "" {
-		t.Fatalf("a dev build must not advance the stored version, got %q", seen)
+	for _, version := range []string{"dev", "v0.2.0-10-g1656b508-dirty"} {
+		st := noticeStore(t)
+		if err := st.SetSetting(uirelease.LastSeenSetting, "v0.1.0"); err != nil {
+			t.Fatal(err)
+		}
+		m := noticeModel(st, version)
+		m.openStartupGreeting()
+		if !m.listClear() {
+			t.Fatalf("%s build must not open a startup greeting", version)
+		}
+		if seen, _ := st.Setting(uirelease.LastSeenSetting); seen != "v0.1.0" {
+			t.Fatalf("%s build must not advance the stored version, got %q", version, seen)
+		}
 	}
 }
 
@@ -942,7 +957,7 @@ func TestAutoOpenFeedAndUpdateFrames(t *testing.T) {
 		Banner: "Hold off on v0.36",
 		Title:  "Hold off on v0.36",
 		Body:   []string{"Sessions may drop.", "Stay on v0.35 until the fix."},
-		URL:    "https://github.com/YoanWai/agent-manager/issues/1",
+		URL:    "https://github.com/wainmann/agent-manager/issues/1",
 	}}})
 	feedFrame := ansi.Strip(preparedView(feedModel))
 	for _, want := range []string{"messages", "Hold off on v0.36", "Sessions may drop", "Stay on v0.35", "esc"} {
@@ -956,7 +971,7 @@ func TestAutoOpenFeedAndUpdateFrames(t *testing.T) {
 	upd.base = baseList
 	upd.Update(uirelease.UpdateMsg{
 		Latest:   "v0.3.0",
-		URL:      "https://github.com/YoanWai/agent-manager/releases/tag/v0.3.0",
+		URL:      "https://github.com/wainmann/agent-manager/releases/tag/v0.3.0",
 		Releases: []update.Release{uiRelease("v0.3.0", "Notices: Open the modal on a new message")},
 	})
 	updFrame := ansi.Strip(preparedView(upd))
@@ -983,7 +998,7 @@ func TestUpdateNoticeAppliesOnU(t *testing.T) {
 	uirelease.RefreshForApply = func(context.Context, string, string) (update.Result, error) {
 		return update.Result{
 			Latest: "v0.6.0",
-			URL:    "https://github.com/YoanWai/agent-manager/releases/tag/v0.6.0",
+			URL:    "https://github.com/wainmann/agent-manager/releases/tag/v0.6.0",
 			Releases: []update.Release{
 				uiRelease("v0.6.0", "Newest release"),
 				uiRelease("v0.2.0", "Current release"),
@@ -1037,7 +1052,7 @@ func TestUpdateNoticeApplyFailureSurfaces(t *testing.T) {
 	uirelease.RefreshForApply = func(context.Context, string, string) (update.Result, error) {
 		return update.Result{
 			Latest:   "v0.3.0",
-			URL:      "https://github.com/YoanWai/agent-manager/releases/tag/v0.3.0",
+			URL:      "https://github.com/wainmann/agent-manager/releases/tag/v0.3.0",
 			Releases: []update.Release{uiRelease("v0.3.0", "Newest release"), uiRelease("v0.2.0", "Current release")},
 		}, nil
 	}
@@ -1147,7 +1162,7 @@ func uiRelease(version string, changes ...string) update.Release {
 func uiReleaseWithTotal(version string, total int, changes ...string) update.Release {
 	release := update.Release{
 		Version:      version,
-		URL:          "https://github.com/YoanWai/agent-manager/releases/tag/" + version,
+		URL:          "https://github.com/wainmann/agent-manager/releases/tag/" + version,
 		TotalChanges: total,
 	}
 	for _, text := range changes {

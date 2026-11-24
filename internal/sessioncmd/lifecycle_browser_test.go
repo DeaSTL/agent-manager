@@ -210,7 +210,7 @@ func TestRelaunchInPaneTypesTheBrowserCommand(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	relaunched, err := RelaunchInPane(h.driver, h.store, h.lifecycle.runtime.Hooks, browser.ID, cfg.Tools["browser"].Launch())
+	relaunched, _, err := RelaunchInPane(h.driver, h.store, h.lifecycle.runtime.Hooks, nil, browser.ID, cfg.Tools["browser"].Launch(), true, "")
 	if err != nil {
 		t.Fatalf("RelaunchInPane: %v", err)
 	}

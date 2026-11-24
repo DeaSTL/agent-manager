@@ -61,15 +61,15 @@ func (s *Sessions) Snapshot(sessionID string) (Snapshot, error) {
 		Groups:       runtime.groupRows(groups, stored),
 	}
 	for _, sess := range stored {
-		_, running := panes[sess.ID]
+		pane, running := panes[sess.ID]
 		if sess.Tool == config.TerminalTool {
-			snapshot.Terminals = append(snapshot.Terminals, runtime.terminalInfo(sess, running, names[sess.ParentID]))
+			snapshot.Terminals = append(snapshot.Terminals, terminalRow(sess, running, names[sess.ParentID], pane.Path))
 			continue
 		}
 		if runtime.cfg.IsTool(sess.Tool) {
 			continue
 		}
-		snapshot.Sessions = append(snapshot.Sessions, runtime.sessionInfo(sess, running, sess.ID == sessionID))
+		snapshot.Sessions = append(snapshot.Sessions, sessionRow(sess, running, sess.ID == sessionID, pane.Path))
 	}
 	return snapshot, nil
 }

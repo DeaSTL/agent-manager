@@ -142,7 +142,7 @@ func TestHintOnWindowsAvoidsUnixInstallers(t *testing.T) {
 	if got, want := hint("windows", "git"), "install it with: scoop install git"; got != want {
 		t.Fatalf("hint = %q, want %q", got, want)
 	}
-	for _, tool := range []string{"claude", "codex", "gemini", "grok", "hermes", "muse", "opencode", "pi", "agy", "omp"} {
+	for _, tool := range []string{"claude", "codex", "gemini", "grok", "hermes", "muse", "opencode", "pi", "agy", "omp", "kiro-cli", "copilot"} {
 		if got := hint("windows", tool); strings.Contains(got, "curl") {
 			t.Fatalf("hint for %s = %q, want no Unix installer", tool, got)
 		}
@@ -154,7 +154,7 @@ func TestHintOnWindowsAvoidsUnixInstallers(t *testing.T) {
 // the plain-shell rows are not agent CLIs; cmd is documented as unsupported
 // on native Windows.
 func TestEveryBuiltinAgentHasAWindowsInstall(t *testing.T) {
-	agents := []string{"claude", "codex", "gemini", "grok", "hermes", "muse", "opencode", "pi", "agy", "omp"}
+	agents := []string{"claude", "codex", "gemini", "grok", "hermes", "muse", "opencode", "pi", "agy", "omp", "kiro-cli", "copilot"}
 	for _, tool := range agents {
 		if got := installers("windows")[tool]; got == "" {
 			t.Errorf("%s has no Windows install", tool)
@@ -513,8 +513,8 @@ func runCommand(t *testing.T, cmd *exec.Cmd, env []string) (string, int) {
 func TestVerifyAttestationMatchesPowerShellCase(t *testing.T) {
 	dir := t.TempDir()
 	log := filepath.Join(dir, "gh.log")
-	writeExe(t, filepath.Join(dir, "gh"), "#!/bin/sh\nprintf 'prompt=%s\\n' \"${GH_PROMPT_DISABLED-unset}\" >> \"$GH_LOG\"\nprintf '%s\\n' \"$*\" >> \"$GH_LOG\"\nexit \"${GH_EXIT:-0}\"\n")
-	body := "set -eu\nREPO=YoanWai/agent-manager\n" + installFuncs(t, "err", "verify_attestation") + "verify_attestation /tmp/archive.tar.gz\nprintf 'done\\n'\n"
+	writeExe(t, filepath.Join(dir, "gh"), attestationGhStub)
+	body := "set -eu\nREPO=wainmann/agent-manager\n" + installFuncs(t, "err", "verify_attestation") + "verify_attestation archive.tar.gz\nprintf 'done\\n'\n"
 	path := "PATH=" + dir
 	base := []string{path, "GH_LOG=" + log}
 
@@ -529,7 +529,7 @@ func TestVerifyAttestationMatchesPowerShellCase(t *testing.T) {
 		}
 		out, code = runDash(t, body, append(append([]string{}, base...), "AGENT_MANAGER_VERIFY_ATTESTATION="+flag, "GH_EXIT=0"))
 		got := readLog(t, log)
-		if code != 0 || !strings.Contains(out, "done") || !strings.Contains(got, "prompt=1\nattestation verify /tmp/archive.tar.gz --repo YoanWai/agent-manager\n") {
+		if code != 0 || !strings.Contains(out, "done") || got != "prompt=1\n"+verifyRepoCall {
 			t.Fatalf("flag %s: exit %d\n%s\nlog %q", flag, code, out, got)
 		}
 	}
@@ -544,18 +544,113 @@ func TestVerifyAttestationMatchesPowerShellCase(t *testing.T) {
 		}
 	}
 
+	// A release signed before the move fails --repo and passes the fallback.
+	if err := os.Remove(log); err != nil && !os.IsNotExist(err) {
+		t.Fatal(err)
+	}
+	out, code = runDash(t, body, append(append([]string{}, base...), "AGENT_MANAGER_VERIFY_ATTESTATION=1", "GH_EXIT=1", "GH_OWNER_EXIT=0"))
+	if got := readLog(t, log); code != 0 || !strings.Contains(out, "done") || !strings.Contains(out, "trying --owner YoanWai") || got != "prompt=1\n"+verifyRepoCall+"prompt=1\n"+verifyOwnerCall {
+		t.Fatalf("fallback attestation: exit %d\n%s\nlog %q", code, out, got)
+	}
+
+	// Both forms rejecting the archive stops the install.
 	if err := os.Remove(log); err != nil && !os.IsNotExist(err) {
 		t.Fatal(err)
 	}
 	out, code = runDash(t, body, append(append([]string{}, base...), "AGENT_MANAGER_VERIFY_ATTESTATION=1", "GH_EXIT=1"))
-	if code != 1 || !strings.Contains(out, "error: attestation verification failed for /tmp/archive.tar.gz") {
+	if code != 1 || strings.Contains(out, "done") || !strings.Contains(out, "error: attestation verification failed for archive.tar.gz") {
 		t.Fatalf("rejected attestation: exit %d\n%s", code, out)
+	}
+	if got := readLog(t, log); got != "prompt=1\n"+verifyRepoCall+"prompt=1\n"+verifyOwnerCall {
+		t.Fatalf("rejected attestation did not retry with the fallback: log %q", got)
 	}
 
 	out, code = runDash(t, body, []string{"PATH=" + t.TempDir(), "AGENT_MANAGER_VERIFY_ATTESTATION=yes"})
 	if code != 1 || !strings.Contains(out, "error: AGENT_MANAGER_VERIFY_ATTESTATION is set but gh is not installed") {
 		t.Fatalf("missing gh: exit %d\n%s", code, out)
 	}
+}
+
+// attestationGhStub logs each call. A call with --owner exits with
+// GH_OWNER_EXIT when set, so a test can fail only the first form.
+const attestationGhStub = "#!/bin/sh\n" +
+	"printf 'prompt=%s\\n' \"${GH_PROMPT_DISABLED-unset}\" >> \"$GH_LOG\"\n" +
+	"printf '%s\\n' \"$*\" >> \"$GH_LOG\"\n" +
+	"case $* in *--owner*) exit \"${GH_OWNER_EXIT:-${GH_EXIT:-0}}\" ;; esac\n" +
+	"exit \"${GH_EXIT:-0}\"\n"
+
+const (
+	verifyRepoCall  = "attestation verify archive.tar.gz --repo wainmann/agent-manager\n"
+	verifyOwnerCall = "attestation verify archive.tar.gz --owner YoanWai --signer-repo YoanWai/agent-manager\n"
+)
+
+func TestPowerShellAttestationFallsBackToTheOldSigner(t *testing.T) {
+	if _, err := exec.LookPath("pwsh"); err != nil {
+		t.Skip("pwsh is not installed")
+	}
+	if runtime.GOOS == "windows" {
+		t.Skip("the gh stub is a shell script")
+	}
+	source, err := os.ReadFile(repoFile(t, "install.ps1"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	log := filepath.Join(dir, "gh.log")
+	writeExe(t, filepath.Join(dir, "gh"), attestationGhStub)
+	script := "$ErrorActionPreference = 'Stop'\n$Repo = 'wainmann/agent-manager'\n" +
+		powershellFunc(t, string(source), "Assert-Attestation") +
+		"try { Assert-Attestation 'archive.tar.gz'; 'PASSED' } catch { \"error: $($_.Exception.Message)\"; exit 1 }\n"
+	t.Setenv("GH_LOG", log)
+	t.Setenv("AGENT_MANAGER_VERIFY_ATTESTATION", "1")
+	t.Setenv("GH_PROMPT_DISABLED", "")
+
+	for _, tc := range []struct {
+		name      string
+		repoExit  string
+		ownerExit string
+		code      int
+		log       string
+	}{
+		{"new signer", "0", "1", 0, "prompt=1\n" + verifyRepoCall},
+		{"old signer", "1", "0", 0, "prompt=1\n" + verifyRepoCall + "prompt=1\n" + verifyOwnerCall},
+		{"rejected", "1", "1", 1, "prompt=1\n" + verifyRepoCall + "prompt=1\n" + verifyOwnerCall},
+	} {
+		if err := os.Remove(log); err != nil && !os.IsNotExist(err) {
+			t.Fatal(err)
+		}
+		t.Setenv("GH_EXIT", tc.repoExit)
+		t.Setenv("GH_OWNER_EXIT", tc.ownerExit)
+		out, code := runPwsh(t, script, dir)
+		got := readLog(t, log)
+		passed := strings.Contains(out, "PASSED")
+		if code != tc.code || passed != (tc.code == 0) || got != tc.log {
+			t.Fatalf("%s: exit %d\n%s\nlog %q", tc.name, code, out, got)
+		}
+		if tc.code != 0 && !strings.Contains(out, "error: attestation verification failed for archive.tar.gz") {
+			t.Fatalf("%s: no failure message\n%s", tc.name, out)
+		}
+	}
+}
+
+// powershellFunc returns one tab-indented function from install.ps1,
+// from its declaration to the brace that closes it at the same indent.
+func powershellFunc(t *testing.T, source, name string) string {
+	t.Helper()
+	lines := strings.Split(strings.ReplaceAll(source, "\r\n", "\n"), "\n")
+	for i, line := range lines {
+		if !strings.HasPrefix(line, "\tfunction "+name+"(") && !strings.HasPrefix(line, "\tfunction "+name+" ") {
+			continue
+		}
+		for j := i + 1; j < len(lines); j++ {
+			if lines[j] == "\t}" {
+				return strings.Join(lines[i:j+1], "\n") + "\n"
+			}
+		}
+		t.Fatalf("install.ps1 %s never closed", name)
+	}
+	t.Fatalf("install.ps1 has no %s", name)
+	return ""
 }
 
 func TestReleaseFooterShowsTheScriptBeforeRunning(t *testing.T) {
@@ -587,27 +682,24 @@ func TestPowerShellAttestationExampleRequiresGh(t *testing.T) {
 	if _, err := exec.LookPath("pwsh"); err != nil {
 		t.Skip("pwsh is not installed")
 	}
-	for _, path := range []string{"README.md", "docs/install.md"} {
-		fence := powershellFence(t, path, "gh attestation verify .\\install.ps1")
-		if !strings.Contains(fence, "Get-Command gh -ErrorAction Stop") {
-			t.Fatalf("%s attestation example does not require gh", path)
-		}
-		out, code := runPwsh(t, missingGhPrelude()+fence, "")
-		if strings.Contains(out, "RAN") || code == 0 {
-			t.Fatalf("%s missing gh ran the installer: exit %d\n%s", path, code, out)
-		}
+	script := powershellFence(t, "docs/install.md", "gh attestation verify .\\install.ps1")
+	if !strings.Contains(script, "Get-Command gh -ErrorAction Stop") {
+		t.Fatal("docs/install.md attestation example does not require gh")
+	}
+	out, code := runPwsh(t, missingGhPrelude()+script, "")
+	if strings.Contains(out, "RAN") || code == 0 {
+		t.Fatalf("missing gh ran the installer: exit %d\n%s", code, out)
 	}
 	zip := powershellFence(t, "docs/install.md", "gh attestation verify $archive")
-	out, code := runPwsh(t, "$global:LASTEXITCODE = 0\n$archive = 'archive.zip'\n"+zip+"'PASSED'\n", "")
+	out, code = runPwsh(t, "$global:LASTEXITCODE = 0\n$archive = 'archive.zip'\n"+zip+"'PASSED'\n", "")
 	if strings.Contains(out, "PASSED") || code == 0 {
 		t.Fatalf("zip verify treated a missing gh as success: exit %d\n%s", code, out)
 	}
-	readme := powershellFence(t, "README.md", "gh attestation verify .\\install.ps1")
-	out, code = runPwsh(t, missingGhPrelude()+readme, writeGhStub(t, 0))
+	out, code = runPwsh(t, missingGhPrelude()+script, writeGhStub(t, 0))
 	if code != 0 || !strings.Contains(out, "RAN") {
 		t.Fatalf("verify success should install: exit %d\n%s", code, out)
 	}
-	out, code = runPwsh(t, missingGhPrelude()+readme, writeGhStub(t, 1))
+	out, code = runPwsh(t, missingGhPrelude()+script, writeGhStub(t, 1))
 	if strings.Contains(out, "RAN") || code == 0 {
 		t.Fatalf("verify failure should stop: exit %d\n%s", code, out)
 	}
@@ -693,7 +785,7 @@ func runPwsh(t *testing.T, script, pathDir string) (string, int) {
 func TestDetectOSOnWindowsNamesTheReadableInstaller(t *testing.T) {
 	body := "set -eu\n" + installFuncs(t, "err", "detect_os") + "uname() { echo Windows_NT; }\ndetect_os\n"
 	out, code := runDash(t, body, []string{"PATH=/usr/bin:/bin"})
-	const want = "https://raw.githubusercontent.com/YoanWai/agent-manager/main/install.ps1"
+	const want = "https://raw.githubusercontent.com/wainmann/agent-manager/main/install.ps1"
 	if code != 1 || !strings.Contains(out, want) || strings.Contains(out, "releases/latest/download/install.ps1") {
 		t.Fatalf("windows hint: exit %d\n%s", code, out)
 	}

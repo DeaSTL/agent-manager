@@ -210,7 +210,7 @@ func TestDefaultListAnswersToTodaysKeys(t *testing.T) {
 		"right": StepIn, "left": StepOut, "n": NewSession, "t": Terminal, "g": NewGroup, "C": NewConnection, "f": Fork,
 		"space": Prompt, "ctrl+r": Review, ".": MarkIdle, "r": Rename, "m": Move, "o": Editor, "R": Restart,
 		"x": Kill, "X": KillAll, "v": Revive, "V": ReviveAll, "a": Archive, "u": Restore, "d": Delete,
-		"/": Search, "w": Filter, "T": Archived, "e": EmptyGroups, "F": FoldAll, "|": Resize,
+		"/": Search, "w": Filter, "T": Archived, "e": EmptyGroups, "F": FoldAll, "ctrl+]": Resize,
 		"s": Settings, "M": Messages, "?": Help, "q": Quit,
 	} {
 		if got, bound := list.ActionFor(key); !bound || got != want {
@@ -438,5 +438,22 @@ func TestTmuxPrefixIsOffUntilWrittenAndTakesTwoKeysAtMost(t *testing.T) {
 		if _, err := decodeSession(t, tc.text); err == nil || !strings.Contains(err.Error(), tc.reason) {
 			t.Errorf("%s: err = %v, want %q", tc.text, err, tc.reason)
 		}
+	}
+}
+
+func TestBindingTextPreservesLiteralDirections(t *testing.T) {
+	b := keys("left", "shift+up", "←", "↑", "^", "v", "<", ">", "/")
+	canonical := "left / shift+up / ← / ↑ / ^ / v / < / > / /"
+	if got := b.Text(" / ", false); got != canonical {
+		t.Fatalf("names=%q", got)
+	}
+	if got := b.Text(" / ", true); got != "← / shift+↑ / ← / ↑ / ^ / v / < / > / /" {
+		t.Fatalf("glyphs=%q", got)
+	}
+	if b.Label() != canonical {
+		t.Fatal("display changed binding values")
+	}
+	if got := (Binding{}).Text("/", false); got != "" {
+		t.Fatal(got)
 	}
 }

@@ -69,7 +69,7 @@ func narrowViewTier(alert string) legendSection {
 	view := legendSection{Title: "View", Quiet: true, Pairs: [][2]string{
 		{"↑/k ↓/j", "navigate"}, {"n", "new"}, {"t", "terminal"}, {"b", "browser"}, {"g", "group"}, {"/", "search"}, {"T", "archived"},
 		{"w", "attention"}, {"e", "hide empty"}, {"?", "keys"}, {"q", "quit"}, {"C", "connection"},
-		{"⇧↑/K/⇧↓/J", "reorder"}, {"F", "fold all"}, {"|", "resize"}, {"s", "settings"},
+		{"⇧↑/K/⇧↓/J", "reorder"}, {"F", "fold all"}, {"ctrl+]", "resize"}, {"s", "settings"},
 	}}
 	if alert != "" {
 		view.Alerts = [][2]string{{"M", alert}}
@@ -95,7 +95,7 @@ func narrowTransientTiers() []legendSection {
 			{"ctrl+q / ctrl+\\ / click the list / mouse back", "back"}, {"←", "prompt start: back"}, {"ctrl+r", "review"},
 			{"f3", "editor"}, {"f4", "saved prompts"}, {"pgup/pgdn", "scroll"}, {"click / alt+drag", "agent UI"},
 		}},
-		{Title: "Resize", Pairs: [][2]string{{"←→", "nudge"}, {"drag", "divider"}, {"| / release", "commit"}, {"esc", "cancel"}}},
+		{Title: "Resize", Pairs: [][2]string{{"←→", "nudge"}, {"drag", "divider"}, {"ctrl+] / release", "commit"}, {"esc", "cancel"}}},
 		{Title: "Rename", Pairs: [][2]string{{"tab", "tool: claude"}, {"↵", "save"}, {"esc", "cancel"}}},
 		{Title: "Reorder", Pairs: [][2]string{{"drag / ↑↓ / wheel", "move"}, {"↵ / release", "drop"}, {"esc", "put back"}}},
 		{Title: "Move", Pairs: [][2]string{{"release", "move to backend"}, {"esc", "put back"}}},

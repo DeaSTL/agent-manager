@@ -21,6 +21,11 @@ import (
 	"github.com/YoanWai/agent-manager/internal/tmux"
 )
 
+func TestMain(m *testing.M) {
+	tmux.ConfigFile = os.DevNull
+	os.Exit(m.Run())
+}
+
 func TestPromptInjectsDirectiveOnlyForAutoNamedWithPrompt(t *testing.T) {
 	withDirective := Prompt("", "build the api", true)
 	if !strings.HasPrefix(withDirective, RenameDirective+"\n\n") || !strings.HasSuffix(withDirective, "build the api") {
@@ -249,7 +254,7 @@ func TestEnvironmentCarriesSessionIDAndHooks(t *testing.T) {
 	manager := hooks.NewManager(t.TempDir())
 
 	plain := config.CLI{Command: "cat"}
-	command, env, err := Environment(manager, "plain", plain, plain.Command, "abcd1234", t.TempDir(), time.Time{}, nil)
+	command, env, _, err := Environment(manager, "plain", plain, plain.Command, "abcd1234", t.TempDir(), time.Time{}, nil)
 	if err != nil {
 		t.Fatalf("Environment: %v", err)
 	}
@@ -264,7 +269,7 @@ func TestEnvironmentCarriesSessionIDAndHooks(t *testing.T) {
 	}
 
 	hooked := config.CLI{Command: "cat", StatusSource: hooks.StatusSourceClaude, MCP: "claude"}
-	command, env, err = Environment(manager, "hooked", hooked, hooked.Command, "abcd1234", t.TempDir(), time.Time{}, nil)
+	command, env, _, err = Environment(manager, "hooked", hooked, hooked.Command, "abcd1234", t.TempDir(), time.Time{}, nil)
 	if err != nil {
 		t.Fatalf("Environment hooked: %v", err)
 	}
@@ -308,7 +313,7 @@ func TestEnvironmentRefusesACLIOlderThanItsMinimum(t *testing.T) {
 	manager := hooks.NewManager(t.TempDir())
 	tool := config.CLI{Command: cli, MinimumVersion: "9.0.0", MCP: mcpreg.StyleNone}
 
-	_, _, err := Environment(manager, "old", tool, tool.Command, "abcd1234", t.TempDir(), time.Time{}, nil)
+	_, _, _, err := Environment(manager, "old", tool, tool.Command, "abcd1234", t.TempDir(), time.Time{}, nil)
 	var outdated config.OutdatedToolError
 	if !errors.As(err, &outdated) || outdated.Installed != "0.1.0" || outdated.Minimum != "9.0.0" {
 		t.Fatalf("err = %v, want the launch refused for 0.1.0", err)
@@ -319,7 +324,7 @@ func TestEnvironmentRunsTheAgentUnderThePIDItExports(t *testing.T) {
 	testenv.SkipPOSIXShell(t)
 	manager := hooks.NewManager(t.TempDir())
 	probe := config.CLI{Command: "sh -c 'echo $$ $" + hooks.EnvAgentPID + "'", MCP: mcpreg.StyleNone}
-	command, _, err := Environment(manager, "probe", probe, probe.Command, "abcd1234", t.TempDir(), time.Time{}, nil)
+	command, _, _, err := Environment(manager, "probe", probe, probe.Command, "abcd1234", t.TempDir(), time.Time{}, nil)
 	if err != nil {
 		t.Fatalf("Environment: %v", err)
 	}
@@ -337,7 +342,7 @@ func TestEnvironmentRunsTheAgentUnderThePIDItExports(t *testing.T) {
 
 	prompt := "it's \"quoted\" $HOME `date` \\n\nsecond line"
 	echo := config.CLI{Command: `sh -c 'printf "%s" "$1"' sh`, MCP: mcpreg.StyleNone}
-	command, _, err = Environment(manager, "echo", echo, WithPrompt(echo, echo.Command, prompt), "abcd1234", t.TempDir(), time.Time{}, nil)
+	command, _, _, err = Environment(manager, "echo", echo, WithPrompt(echo, echo.Command, prompt), "abcd1234", t.TempDir(), time.Time{}, nil)
 	if err != nil {
 		t.Fatalf("Environment: %v", err)
 	}
@@ -346,11 +351,11 @@ func TestEnvironmentRunsTheAgentUnderThePIDItExports(t *testing.T) {
 	}
 
 	shell := config.CLI{Command: "", MCP: mcpreg.StyleNone}
-	if command, env, err := Environment(manager, "terminal", shell, shell.Command, "abcd1234", t.TempDir(), time.Time{}, nil); err != nil || command != "" || env != nil {
+	if command, env, _, err := Environment(manager, "terminal", shell, shell.Command, "abcd1234", t.TempDir(), time.Time{}, nil); err != nil || command != "" || env != nil {
 		t.Fatalf("shell launch = %q, %v, %v; want no command and no env, so tmux keeps its login shell", command, env, err)
 	}
 	profile := map[string]string{"AM_SECRET": "s3cret"}
-	if command, env, err := Environment(manager, "terminal", shell, shell.Command, "abcd1234", t.TempDir(), time.Time{}, profile); err != nil || command != "" || env[hooks.EnvSessionID] != "abcd1234" || env["AM_SECRET"] != "s3cret" {
+	if command, env, _, err := Environment(manager, "terminal", shell, shell.Command, "abcd1234", t.TempDir(), time.Time{}, profile); err != nil || command != "" || env[hooks.EnvSessionID] != "abcd1234" || env["AM_SECRET"] != "s3cret" {
 		t.Fatalf("profiled shell launch = %q, %v, %v; want no command and the session and profile env", command, env, err)
 	}
 }
@@ -360,7 +365,7 @@ func TestEnvironmentRunsTheAgentUnderThePIDItExports(t *testing.T) {
 func TestEnvironmentCarriesTheChoicesEnvironment(t *testing.T) {
 	manager := hooks.NewManager(t.TempDir())
 	tool := config.CLI{Command: "cat", ModelEnv: `PICKED={"model":{model}}`, MCP: mcpreg.StyleNone}.WithChoice(config.Choice{Model: "big"})
-	command, env, err := Environment(manager, "plain", tool, tool.Command, "abcd1234", t.TempDir(), time.Time{}, nil)
+	command, env, _, err := Environment(manager, "plain", tool, tool.Command, "abcd1234", t.TempDir(), time.Time{}, nil)
 	if err != nil {
 		t.Fatalf("Environment: %v", err)
 	}
@@ -374,7 +379,7 @@ func TestEnvironmentCarriesTheChoicesEnvironment(t *testing.T) {
 func TestEnvironmentNamesTheLaunch(t *testing.T) {
 	manager := hooks.NewManager(t.TempDir())
 	plain := config.CLI{Command: "cat"}
-	_, env, err := Environment(manager, "plain", plain, plain.Command, "abcd1234", t.TempDir(), time.Time{}, nil)
+	_, env, _, err := Environment(manager, "plain", plain, plain.Command, "abcd1234", t.TempDir(), time.Time{}, nil)
 	if err != nil {
 		t.Fatalf("Environment: %v", err)
 	}
@@ -382,7 +387,7 @@ func TestEnvironmentNamesTheLaunch(t *testing.T) {
 		t.Fatalf("first launch env = %v, want launch 0", env)
 	}
 	launchedAt := time.Unix(1700000000, 123456789)
-	_, env, err = Environment(manager, "plain", plain, plain.Command, "abcd1234", t.TempDir(), launchedAt, nil)
+	_, env, _, err = Environment(manager, "plain", plain, plain.Command, "abcd1234", t.TempDir(), launchedAt, nil)
 	if err != nil {
 		t.Fatalf("Environment: %v", err)
 	}
@@ -402,7 +407,7 @@ func TestEnvironmentExportsTheProfileUnderTheManagersOwn(t *testing.T) {
 		{"hooked", config.CLI{Command: "cat", StatusSource: hooks.StatusSourceClaude}},
 		{"terminal", config.Tool{}.Launch()},
 	} {
-		_, env, err := Environment(manager, tool.name, tool.tool, tool.tool.Command, "abcd1234", t.TempDir(), time.Time{}, profile)
+		_, env, _, err := Environment(manager, tool.name, tool.tool, tool.tool.Command, "abcd1234", t.TempDir(), time.Time{}, profile)
 		if err != nil {
 			t.Fatalf("%s: Environment: %v", tool.name, err)
 		}
@@ -422,7 +427,7 @@ func TestEnvironmentWiresTheSessionReport(t *testing.T) {
 	manager := hooks.NewManager(t.TempDir())
 
 	pi := config.CLI{Command: "cat", ModelArgs: "--model {model}", SessionReport: "pi", MCP: mcpreg.StyleNone}.WithChoice(config.Choice{Model: "big"})
-	command, _, err := Environment(manager, "pi", pi, pi.Command+" --session-id abc", "abcd1234", t.TempDir(), time.Time{}, nil)
+	command, _, _, err := Environment(manager, "pi", pi, pi.Command+" --session-id abc", "abcd1234", t.TempDir(), time.Time{}, nil)
 	if err != nil {
 		t.Fatalf("Environment pi: %v", err)
 	}
@@ -431,7 +436,7 @@ func TestEnvironmentWiresTheSessionReport(t *testing.T) {
 	}
 
 	opencode := config.CLI{Command: "cat", SessionReport: "opencode", MCP: mcpreg.StyleNone}
-	command, env, err := Environment(manager, "opencode", opencode, opencode.Command, "abcd1234", t.TempDir(), time.Time{}, nil)
+	command, env, _, err := Environment(manager, "opencode", opencode, opencode.Command, "abcd1234", t.TempDir(), time.Time{}, nil)
 	if err != nil {
 		t.Fatalf("Environment opencode: %v", err)
 	}
@@ -441,7 +446,7 @@ func TestEnvironmentWiresTheSessionReport(t *testing.T) {
 	}
 
 	t.Setenv("OPENCODE_CLI_CONFIG_CONTENT", `{"plugins":["theirs"]}`)
-	_, env, err = Environment(manager, "opencode", opencode, opencode.Command, "abcd1234", t.TempDir(), time.Time{}, nil)
+	_, env, _, err = Environment(manager, "opencode", opencode, opencode.Command, "abcd1234", t.TempDir(), time.Time{}, nil)
 	if err != nil {
 		t.Fatalf("Environment opencode: %v", err)
 	}
@@ -457,7 +462,7 @@ func TestEnvironmentReportsClaudeConversationsThroughItsSettings(t *testing.T) {
 		want   bool
 	}{{"claude", true}, {"none", false}} {
 		tool := config.CLI{Command: "cat", StatusSource: hooks.StatusSourceClaude, MCP: mcpreg.StyleNone, SessionReport: tc.report}
-		if _, _, err := Environment(manager, "claude", tool, tool.Command, "abcd1234", t.TempDir(), time.Unix(5, 0), nil); err != nil {
+		if _, _, _, err := Environment(manager, "claude", tool, tool.Command, "abcd1234", t.TempDir(), time.Unix(5, 0), nil); err != nil {
 			t.Fatalf("Environment: %v", err)
 		}
 		raw, err := os.ReadFile(manager.SettingsFile("abcd1234"))
@@ -488,7 +493,7 @@ func TestEnvironmentSetsGrokTerminalTheme(t *testing.T) {
 				t.Setenv("GROK_HOME", dir)
 			}
 			grok := config.CLI{Command: "cat", MCP: mcpreg.StyleNone}
-			if _, _, err := Environment(hooks.NewManager(t.TempDir()), "grok", grok, grok.Command, "abcd1234", t.TempDir(), time.Time{}, nil); err != nil {
+			if _, _, _, err := Environment(hooks.NewManager(t.TempDir()), "grok", grok, grok.Command, "abcd1234", t.TempDir(), time.Time{}, nil); err != nil {
 				t.Fatalf("Environment grok: %v", err)
 			}
 			written, err := os.ReadFile(filepath.Join(dir, "config.toml"))
@@ -507,7 +512,7 @@ func TestEnvironmentKeepsGrokOffTheSharedLeader(t *testing.T) {
 	t.Setenv("GROK_HOME", "")
 	grok := config.CLI{Command: "cat", MCP: mcpreg.StyleNone}
 	manager := hooks.NewManager(t.TempDir())
-	command, _, err := Environment(manager, "grok", grok, "cat --resume abc", "abcd1234", t.TempDir(), time.Time{}, nil)
+	command, _, _, err := Environment(manager, "grok", grok, "cat --resume abc", "abcd1234", t.TempDir(), time.Time{}, nil)
 	if err != nil {
 		t.Fatalf("Environment grok: %v", err)
 	}
@@ -572,6 +577,50 @@ func TestAntigravityLaunchAndRevive(t *testing.T) {
 	}
 	if got := ReviveCommand(tool, ""); got != "agy" {
 		t.Fatal(got)
+	}
+}
+
+// A CLI that stops answering while the manager registers the MCP server must
+// not keep the session from starting: it starts without the agent-manager
+// tools, with a warning, and the next launch tries to register again.
+func TestEnvironmentStartsWithoutMCPWhenRegistrationTimesOut(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("fake grok executable is a shell script")
+	}
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("GROK_HOME", "")
+	bin := t.TempDir()
+	if err := os.WriteFile(filepath.Join(bin, "grok"), []byte("#!/bin/sh\nexec sleep 30\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	saved := mcpreg.RegistrationTimeout
+	mcpreg.RegistrationTimeout = 300 * time.Millisecond
+	t.Cleanup(func() { mcpreg.RegistrationTimeout = saved })
+
+	manager := hooks.NewManager(t.TempDir())
+	registering := config.CLI{Command: "cat"}
+	command, env, warning, err := Environment(manager, "grok", registering, registering.Command, "abcd1234", t.TempDir(), time.Time{}, nil)
+	if err != nil {
+		t.Fatalf("a registration timeout failed the launch: %v", err)
+	}
+	if !strings.Contains(warning, "grok MCP registration did not finish within 300ms") ||
+		!strings.Contains(warning, "without the agent-manager tools") {
+		t.Fatalf("warning = %q, want the timeout and what the session lost", warning)
+	}
+	if env[hooks.EnvSessionID] != "abcd1234" {
+		t.Fatalf("env = %v, want the session id", env)
+	}
+	unregistered := config.CLI{Command: "cat", MCP: mcpreg.StyleNone}
+	want, _, quiet, err := Environment(manager, "grok", unregistered, unregistered.Command, "abcd1234", t.TempDir(), time.Time{}, nil)
+	if err != nil || quiet != "" {
+		t.Fatalf("Environment without MCP = %q, %v", quiet, err)
+	}
+	if command != want {
+		t.Fatalf("command = %q, want the launch without MCP registration %q", command, want)
+	}
+	if _, err := os.Stat(filepath.Join(manager.Dir(), "mcp-grok-registered")); !os.IsNotExist(err) {
+		t.Fatalf("a timed-out registration left a marker: %v", err)
 	}
 }
 

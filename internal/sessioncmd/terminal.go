@@ -1,10 +1,13 @@
 package sessioncmd
 
 import (
+	"cmp"
 	"database/sql"
 	"errors"
 	"fmt"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/YoanWai/agent-manager/internal/config"
 	"github.com/YoanWai/agent-manager/internal/status"
@@ -44,6 +47,9 @@ type CreateTerminalOptions struct {
 	Group     *string
 	Directory string
 	Nest      *bool
+	// Name names the terminal at creation, the way spawn names a session.
+	// Empty keeps the name derived from the session it hangs under.
+	Name string
 }
 
 type Terminals struct {
@@ -136,7 +142,11 @@ func (r *runtime) unnestedChild(kind childKind, childID string) (store.Session, 
 	return child, nil
 }
 
-func (r *runtime) info(sess store.Session, running bool) (Terminal, error) {
+func (r *runtime) liveTerminalInfo(sess store.Session) (Terminal, error) {
+	return r.info(sess, true, r.currentPath(sess, true))
+}
+
+func (r *runtime) info(sess store.Session, running bool, path string) (Terminal, error) {
 	parentName := ""
 	if sess.ParentID != "" {
 		// A parent row that is gone leaves the terminal orphaned, which the
@@ -150,21 +160,15 @@ func (r *runtime) info(sess store.Session, running bool) (Terminal, error) {
 			parentName = parent.Name
 		}
 	}
-	return r.terminalInfo(sess, running, parentName), nil
+	return terminalRow(sess, running, parentName, path), nil
 }
 
-func (r *runtime) terminalInfo(sess store.Session, running bool, parentName string) Terminal {
-	dir := sess.Cwd
-	if running {
-		if current, err := r.driver.PaneCurrentPath(sess.ID); err == nil {
-			dir = current
-		}
-	}
+func terminalRow(sess store.Session, running bool, parentName, path string) Terminal {
 	return Terminal{
 		ID:         sess.ID,
 		Name:       sess.Name,
 		Group:      sess.Group,
-		Directory:  dir,
+		Directory:  cmp.Or(path, sess.Cwd),
 		Status:     sess.Status,
 		Running:    running,
 		ParentID:   sess.ParentID,
@@ -207,8 +211,8 @@ func (r *runtime) listChildren(kind childKind, sessionID string) ([]Terminal, []
 		if sess.Tool != kind.toolName {
 			continue
 		}
-		_, running := panes[sess.ID]
-		info, err := r.info(sess, running)
+		pane, running := panes[sess.ID]
+		info, err := r.info(sess, running, pane.Path)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -232,6 +236,7 @@ func (t *Terminals) Create(sessionID string, opts CreateTerminalOptions) (Termin
 	launched, err := t.launchChild(runtime, caller, childLaunch{
 		kind:      terminalKind,
 		command:   terminal.Command,
+		name:      opts.Name,
 		group:     opts.Group,
 		directory: opts.Directory,
 		nest:      opts.Nest,
@@ -239,13 +244,14 @@ func (t *Terminals) Create(sessionID string, opts CreateTerminalOptions) (Termin
 	if err != nil {
 		return Terminal{}, err
 	}
-	return runtime.info(launched, true)
+	return runtime.liveTerminalInfo(launched)
 }
 
 type childLaunch struct {
 	kind       childKind
 	command    string
 	browserURL string
+	name       string
 	group      *string
 	directory  string
 	nest       *bool
@@ -276,9 +282,18 @@ func (c *commands) launchChild(runtime *runtime, caller store.Session, request c
 			parentID = caller.ParentID
 		}
 	}
-	name, err := runtime.shellName(request.kind.toolName, parentID)
-	if err != nil {
-		return store.Session{}, err
+	name := strings.TrimSpace(request.name)
+	if name != "" && (strings.IndexFunc(name, unicode.IsControl) >= 0 || !utf8.ValidString(name)) {
+		// A name reaches the list, the picker and the JSON output: a control
+		// character there moves the cursor instead of reading as text. Same
+		// rule connection names already follow.
+		return store.Session{}, fmt.Errorf("a %s name cannot contain control characters", request.kind.noun)
+	}
+	if name == "" {
+		name, err = runtime.shellName(request.kind.toolName, parentID)
+		if err != nil {
+			return store.Session{}, err
+		}
 	}
 	environment, err := runtime.environmentFor(caller, group, nil)
 	if err != nil {
@@ -438,7 +453,7 @@ func (t *Terminals) read(sessionID, terminalID string, styled bool) (TerminalScr
 	if err != nil {
 		return TerminalScreen{}, err
 	}
-	info, err := runtime.info(terminal, true)
+	info, err := runtime.liveTerminalInfo(terminal)
 	if err != nil {
 		return TerminalScreen{}, err
 	}

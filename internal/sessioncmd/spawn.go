@@ -140,7 +140,7 @@ func (s *Sessions) Create(sessionID string, opts CreateSessionOptions) (Session,
 		plan = launch.AssembleResume(toolName, chosen, prompt, resume, autoNamed, proactive)
 	}
 	launched, err := lifecycle.Spawn(SpawnRequest{
-		Session:  store.Session{ID: id, Name: name, Tool: toolName, Cwd: dir, Group: group, Choice: choice, Environment: environment},
+		Session:  store.Session{ID: id, Name: name, Tool: toolName, Cwd: dir, Group: group, Choice: choice, Environment: environment, SpawnedBy: caller.ID},
 		Tool:     chosen,
 		Plan:     plan,
 		Worktree: worktree,
@@ -148,7 +148,9 @@ func (s *Sessions) Create(sessionID string, opts CreateSessionOptions) (Session,
 	if err != nil {
 		return Session{}, err
 	}
-	return runtime.sessionInfo(launched.Session, true, false), nil
+	created := runtime.sessionInfo(launched.Session, true, false)
+	created.Warning = launched.Warning
+	return created, nil
 }
 
 type resumeRequest struct {

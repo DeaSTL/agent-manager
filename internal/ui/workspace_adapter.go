@@ -85,12 +85,10 @@ func (m *Model) railFootLines(width int) []string {
 }
 
 func (m *Model) fullFootLine(width int) []string {
-	return uiworkspace.FootLine(m.workspace.snap, m.workspace.net, width)
+	return uiworkspace.FootLine(m.workspace.snap, m.workspace.net, width, m.prefs.glyphMode)
 }
 
 var postNotification = notify.Notify
-
-var showCommand = notify.ShowCommand
 
 type poller struct {
 	runner       *execution.Runner
@@ -99,7 +97,7 @@ type poller struct {
 }
 
 func newPoller(st *store.Store, driver *tmux.Driver, engine *status.Engine, hookManager *hooks.Manager, gitDriver *git.Driver, statusSources, sessionStores, mcpStyles, reportStyles map[string]string, shellTools map[string]bool, binaries execution.ToolBinaries, interval time.Duration) *poller {
-	deps := execution.Dependencies{Store: st, TMux: driver, Engine: engine, Hooks: hookManager, Git: gitDriver, Notify: postNotification, ShowCommand: showCommand, TakeFocus: takeNotifyFocus}
+	deps := execution.Dependencies{Store: st, TMux: driver, Engine: engine, Hooks: hookManager, Git: gitDriver, Notify: postNotification, TakeFocus: takeNotifyFocus}
 	opts := execution.Options{StatusSources: statusSources, SessionStores: sessionStores, MCPStyles: mcpStyles, ReportStyles: reportStyles, ShellTools: shellTools, Binaries: binaries, Interval: interval}
 	return &poller{runner: execution.New(deps, opts), dependencies: deps, options: opts}
 }
@@ -114,6 +112,7 @@ func pollMessage(result execution.Result) tea.Msg {
 		proc: s.Proc, procFor: s.ProcFor, preview: s.Preview, agents: agentStats{count: s.Agents.Count, cpu: s.Agents.CPU, ram: s.Agents.RAM, rss: s.Agents.RSS},
 		queuedMessages: s.QueuedMessages, paneLines: s.PaneLines, panePrompts: s.PanePrompts, panes: s.Panes,
 		tmuxSocket: s.TmuxSocket, leadingManager: s.LeadingManager, focusID: s.FocusID, turnsEnded: s.TurnsEnded, followWarning: s.FollowWarning,
+		hookFailures: s.HookFailures, hooksConfigError: s.HooksConfigError, notifyNotCarried: s.NotifyNotCarried, notifyFailed: s.NotifyFailed,
 		browsers: browserStates(s.Browsers), browsersRead: s.BrowsersRead, browserWarning: s.BrowserWarning}
 }
 
@@ -197,7 +196,11 @@ type refreshMsg struct {
 	turnsEnded []string
 	// followWarning reports a session whose conversation the pass could not
 	// follow, the first time it fails that way.
-	followWarning string
+	followWarning    string
+	hookFailures     []store.HookFailure
+	hooksConfigError string
+	notifyNotCarried string
+	notifyFailed     string
 	// browsers holds the engines a read pass found. browsersRead is false
 	// when the pass could not read them, and browserWarning says why once.
 	browsers       map[string]browserState
@@ -305,6 +308,10 @@ func (m *Model) listingFenced(listedAt time.Time) bool {
 func (m *Model) routeRefreshMsg(msg tea.Msg) (tea.Model, tea.Cmd, bool) {
 	switch msg := msg.(type) {
 	case refreshMsg:
+		m.notices.HookFailures = hookFailuresFrom(msg.hookFailures)
+		m.notices.HooksConfigError = msg.hooksConfigError
+		m.notices.NotifyNotCarried = msg.notifyNotCarried
+		m.notices.NotifyFailed = msg.notifyFailed
 		// A listing older than a committed mutation or a newer listing keeps
 		// its rows out, but still carries focus consumed from a notification,
 		// the turns it saw end and its pane facts.
