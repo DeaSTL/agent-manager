@@ -77,9 +77,9 @@ func TestEmitSessionStateAddsANotificationOnlyOnATrigger(t *testing.T) {
 func TestNotificationHooksFollowTheBannerTriggerWhateverTheBannerSetting(t *testing.T) {
 	testenv.SkipPOSIXShell(t)
 	m := buildModel(t)
-	hooked := m.cfg.Tools["claude-hooked"]
+	hooked := m.cfg.CLIs["claude-hooked"]
 	hooked.Command = `sh -c 'exec cat' --`
-	m.cfg.Tools["claude-hooked"] = hooked
+	m.cfg.CLIs["claude-hooked"] = hooked
 	createSessionOn(t, m, "needy", "claude-hooked", t.TempDir())
 	sess := m.sessionRows()[0]
 	waitForPane(t, m, sess.ID, "boot-marker")

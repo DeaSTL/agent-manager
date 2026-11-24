@@ -712,9 +712,9 @@ func readyCat(t *testing.T, m *Model, tool string, catArgs ...string) (wait func
 		}
 	}
 	ready := filepath.Join(t.TempDir(), "ready")
-	definition := m.services.cfg.Tools[tool]
+	definition := m.services.cfg.CLIs[tool]
 	definition.Command = strings.Join(append([]string{testfixture.ModeCommand("cat-ready"), tmux.ShellQuote(ready)}, catArgs...), " ")
-	m.services.cfg.Tools[tool] = definition
+	m.services.cfg.CLIs[tool] = definition
 	return func(string) {
 		t.Helper()
 		testfixture.WaitForReady(t, ready)
