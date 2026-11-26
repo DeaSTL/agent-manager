@@ -53,11 +53,18 @@ func BenchmarkFocusPrepareFrame(b *testing.B) {
 }
 
 func BenchmarkFocusBackspaceUpdate(b *testing.B) {
+	const burst = 32
 	m := benchmarkFocusModel(b)
 	key := tea.KeyMsg{Type: tea.KeyBackspace}
 	b.ResetTimer()
 	for range b.N {
-		m.Update(key)
+		for range burst {
+			m.Update(key)
+		}
+		b.StopTimer()
+		m.effects.Input.Active = nil
+		m.effects.Input.Pending = m.effects.Input.Pending[:0]
+		b.StartTimer()
 	}
 }
 
